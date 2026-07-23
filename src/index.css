@@ -1,0 +1,124 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-zen-bg text-zen-text font-sans antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    @apply bg-zen-accentSoft text-zen-accent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zen-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zen-textMuted;
+  }
+}
+
+@layer components {
+  /* Clean elevated card */
+  .card {
+    @apply bg-zen-card rounded-3xl border border-zen-border shadow-soft;
+  }
+
+  .card-hover {
+    @apply card transition-all duration-300 hover:shadow-soft-md hover:border-zen-accentSoft;
+  }
+
+  /* Accent button */
+  .btn-accent {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 
+           bg-zen-accent text-white font-semibold rounded-2xl 
+           shadow-accent transition-all duration-200 
+           hover:bg-zen-accentDark hover:shadow-lg active:scale-[0.97];
+  }
+
+  .btn-warm {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 
+           bg-zen-warm text-white font-semibold rounded-2xl 
+           shadow-warm transition-all duration-200 
+           hover:brightness-110 hover:shadow-lg active:scale-[0.97];
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 
+           bg-transparent border border-zen-border text-zen-textSecondary 
+           font-medium rounded-2xl transition-all duration-200 
+           hover:bg-zen-surface hover:text-zen-text hover:border-zen-textMuted;
+  }
+
+  /* Clean input */
+  .input-zen {
+    @apply w-full px-4 py-3 rounded-2xl border border-zen-border bg-zen-surface 
+           text-zen-text placeholder:text-zen-textMuted text-sm font-sans
+           outline-none transition-all duration-200
+           focus:border-zen-accent focus:ring-2 focus:ring-zen-accentSoft focus:bg-white;
+  }
+
+  .textarea-zen {
+    @apply input-zen resize-none;
+  }
+
+  /* Label */
+  .label-zen {
+    @apply text-xs font-semibold text-zen-textSecondary uppercase tracking-wider;
+  }
+
+  /* Badge */
+  .badge-accent {
+    @apply inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 
+           rounded-full bg-zen-accentSoft text-zen-accent;
+  }
+
+  .badge-warm {
+    @apply inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 
+           rounded-full bg-zen-warmSoft text-zen-warm;
+  }
+
+  .badge-mint {
+    @apply inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 
+           rounded-full bg-zen-mintSoft text-zen-mint;
+  }
+}
+
+/* Dot typing animation */
+.dot-typing {
+  animation: dotTyping 1.2s infinite ease-in-out;
+}
+.dot-typing:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dot-typing:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dotTyping {
+  0%, 100% { transform: scale(0.6); opacity: 0.3; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+/* Onboarding decorative blobs */
+.blob-accent {
+  background: radial-gradient(circle at 50% 50%, rgba(108, 99, 255, 0.08) 0%, transparent 70%);
+}
+.blob-warm {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 138, 101, 0.06) 0%, transparent 70%);
+}

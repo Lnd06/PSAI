@@ -1,0 +1,84 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String      @id @default(uuid())
+  email               String      @unique
+  passwordHash        String
+  name                String
+  openRouterApiKey    String?
+  geminiApiKey        String?
+  aiModel             String?
+  securityQuestion1   String?
+  securityAnswer1Hash String?
+  securityQuestion2   String?
+  securityAnswer2Hash String?
+  cpf                 String?
+  telefone            String?
+  subscriptionStatus  String?     @default("trial")
+  subscriptionPlan    String?     @default("trial")
+  subscriptionId      String?
+  cancelAtPeriodEnd   Boolean     @default(false)
+  profileJson         String?     @db.Text
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  sessions            Session[]
+  crisisLogs          CrisisLog[]
+
+  @@map("users")
+}
+
+model Session {
+  id           String    @id @default(uuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  mode         String    @default("reflective") // "reflective" or "natural"
+  summaryShort String?   @db.Text
+  summaryLong  String?   @db.Text
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  messages     Message[]
+
+  @@map("sessions")
+}
+
+model Message {
+  id             String   @id @default(uuid())
+  sessionId      String
+  session        Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  sender         String   // "user" or "ai"
+  content        String   @db.Text
+  sentiment      String?  // "Neutral", "Anxiolytic", "Depressive", "Happy", "Stressed"
+  sentimentScore Float?   // range of 0 to 100 or -1.0 to 1.0
+  createdAt      DateTime @default(now())
+
+  @@map("messages")
+}
+
+model CrisisLog {
+  id            String   @id @default(uuid())
+  userId        String?
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  contentLength Int
+  detectedTerms String
+  createdAt     DateTime @default(now())
+
+  @@map("crisis_logs")
+}
+
+model Book {
+  id        String   @id @default(uuid())
+  title     String
+  author    String?
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@map("books")
+}

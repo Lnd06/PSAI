@@ -1,0 +1,69 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Debugger logs and devices
+.pnp
+.pnp.js
+
+# Testing
+/coverage
+/.nyc_output
+
+# Production / Build
+dist/
+build/
+.next/
+out/
+.nuxt/
+.output/
+
+# Serverless directories
+.serverless/
+
+# dotenv environment variable files
+.env
+.env*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Database / SQLite / Local storage
+*.db
+*.sqlite
+user_profile.json
+backend/prisma/*.db
+backend/prisma/*.sqlite
+backend/prisma/migrations/
+
+# Agent caches and logs
+.gemini/
+.agents/
+graphify-out/
+.system_generated/
+.gstack/
+*.zip
+
+# Folders and personal files to ignore
+AI Psychologist Agent Site (1)/
+curriculo.md
+currículo.md
+livros/
+backend/cloud-run-env.yaml
+

@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* 1. Primitive Tokens (raw values) */
+    --color-cream-100: #F5F1EB;
+    --color-cream-200: #EDE8E0;
+    --color-cream-300: #E4DFD6;
+    --color-sage-200: #B5C9C2;
+    --color-sage-500: #4A7265;
+    --color-sage-600: #3D5E53;
+    --color-brown-500: #7A7060;
+    --color-brown-900: #221C13;
+
+    /* 2. Semantic Tokens (purpose aliases) */
+    --background: var(--color-cream-100);
+    --foreground: var(--color-brown-900);
+    --card: var(--color-cream-200);
+    --card-light: var(--color-cream-300);
+    --primary: var(--color-sage-500);
+    --primary-hover: var(--color-sage-600);
+    --primary-muted: var(--color-sage-200);
+    --text-muted: var(--color-brown-500);
+    --border: rgba(34, 28, 19, 0.12);
+    --border-light: rgba(34, 28, 19, 0.06);
+
+    /* 3. Component Tokens */
+    --chat-bubble-user-bg: var(--color-cream-300);
+    --chat-bubble-user-border: var(--border);
+    --chat-bubble-user-text: var(--foreground);
+    --chat-input-bg: var(--card);
+    --chat-input-border: var(--border);
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    @apply font-sans;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(74, 114, 101, 0.04) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(122, 112, 96, 0.02) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  /* Custom Scrollbar for modern looks */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-neutral-300 rounded-full hover:bg-neutral-400 transition-colors;
+  }
+}
+
+/* Chat page: prevent body scroll while chat is active */
+.chat-page-active {
+  overflow: hidden !important;
+}
+
+html:has(.h-screen),
+body:has(.h-screen),
+body:has(.h-screen) #root {
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  @apply bg-brand-card bg-opacity-90 border border-white/[0.05] backdrop-blur-2xl shadow-glass;
+}
+
+.glass-card {
+  @apply bg-brand-card bg-opacity-40 border border-white/[0.04] rounded-2xl p-6 transition-all duration-300 hover:bg-opacity-60;
+}
+.glass-card:hover {
+  border-color: rgba(74, 114, 101, 0.15);
+}
+
+/* Fade animations for smooth routing transitions */
+.fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Typing Indicator Ripple Effect */
+.dot-typing {
+  animation: dotTyping 1.2s infinite ease-in-out;
+}
+.dot-typing:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dot-typing:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes dotTyping {
+  0%, 100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+}

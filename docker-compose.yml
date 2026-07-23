@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: psai-db
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: psai
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    container_name: psai-backend
+    ports:
+      - "5000:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: 8080
+      NODE_ENV: production
+      PYTHON_PATH: python3
+      JWT_SECRET: ${JWT_SECRET}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      PINECONE_INDEX: ${PINECONE_INDEX}
+      PINECONE_NAMESPACE: ${PINECONE_NAMESPACE}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY}
+      ELEVENLABS_DEFAULT_VOICE_ID: ${ELEVENLABS_DEFAULT_VOICE_ID}
+      ASAAS_ENV: sandbox
+      ASAAS_API_KEY: ${ASAAS_API_KEY}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN}
+      TTS_DEFAULT_VOICE: pt-BR-FranciscaNeural
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=http://localhost:5000
+    container_name: psai-frontend
+    ports:
+      - "3000:8080"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

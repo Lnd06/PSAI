@@ -1,0 +1,70 @@
+import React from 'react';
+
+interface PSAILogoProps {
+  className?: string;
+  size?: number;
+}
+
+export const PSAILogo: React.FC<PSAILogoProps> = ({ className = '', size = 48 }) => {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={`${className} transition-all duration-300 hover:scale-105`}
+    >
+      <defs>
+        {/* Luxury Gold Gradient */}
+        <linearGradient id="gold-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#f5d061" />
+          <stop offset="50%" stopColor="#dfb94d" />
+          <stop offset="100%" stopColor="#a17d23" />
+        </linearGradient>
+        {/* Subtle Drop Shadow */}
+        <filter id="logo-shadow" x="-10%" y="-10%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#000000" floodOpacity="0.5" />
+        </filter>
+      </defs>
+      
+      <g filter="url(#logo-shadow)">
+        {/* Central column (stem of the Psi symbol) - styled as an elegant vertical leaf/pillar */}
+        <path
+          d="M50 85C51.6569 85 53 83.6569 53 82V20C53 17.2386 50.7614 15 48 15H52C49.2386 15 47 17.2386 47 20V82C47 83.6569 48.3431 85 50 85Z"
+          fill="url(#gold-gradient)"
+        />
+        <path
+          d="M50 12C52.2091 12 54 13.7909 54 16C54 18.2091 52.2091 20 50 20C47.7909 20 46 18.2091 46 16C46 13.7909 47.7909 12 50 12Z"
+          fill="url(#gold-gradient)"
+        />
+
+        {/* Left wing curve of Psi */}
+        <path
+          d="M22 35C24.5 54.5 35.5 67 47 68.5V64.5C38.5 63 29.5 53 27.5 35H22Z"
+          fill="url(#gold-gradient)"
+        />
+        <path
+          d="M20 30C21.1046 30 22 30.8954 22 32C22 33.1046 21.1046 34 20 34C18.8954 34 18 33.1046 18 32C18 30.8954 18.8954 30 20 30Z"
+          fill="url(#gold-gradient)"
+        />
+
+        {/* Right wing curve of Psi */}
+        <path
+          d="M78 35C75.5 54.5 64.5 67 53 68.5V64.5C61.5 63 70.5 53 72.5 35H78Z"
+          fill="url(#gold-gradient)"
+        />
+        <path
+          d="M80 30C81.1046 30 82 30.8954 82 32C82 33.1046 81.1046 34 80 34C78.8954 34 78 33.1046 78 32C78 30.8954 78.8954 30 80 30Z"
+          fill="url(#gold-gradient)"
+        />
+
+        {/* Elegant base support pedestal */}
+        <path
+          d="M38 88C38 86.8954 38.8954 86 40 86H60C61.1046 86 62 86.8954 62 88V90H38V88Z"
+          fill="url(#gold-gradient)"
+        />
+      </g>
+    </svg>
+  );
+};
