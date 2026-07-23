@@ -1,4 +1,4 @@
-# PSAI — Psychological Support AI 🧠💬
+# PSAI — Psychological Support AI
 
 O **PSAI** é um **Diário Terapêutico Inteligente e Co-terapeuta** projetado para fornecer escuta ativa, suporte emocional estruturado e reflexões guiadas com base na **Terapia Cognitivo-Comportamental (TCC)** e em abordagens clínicas humanistas.
 
@@ -6,7 +6,14 @@ O sistema funciona como um monorepo que integra um frontend dinâmico em **React
 
 ---
 
-## 🛠️ Tecnologias Utilizadas
+## Visualização do Projeto
+
+O projeto está disponível para visualização e testes online através do seguinte link:
+👉 **[PSAI - Web Application](https://psai-frontend-794942769529.us-central1.run.app/)**
+
+---
+
+## Tecnologias Utilizadas
 
 ### Frontend
 - **React (v18)** com **TypeScript** e **Vite** para desenvolvimento ultra-rápido.
@@ -31,7 +38,7 @@ O sistema funciona como um monorepo que integra um frontend dinâmico em **React
 
 ---
 
-## 📐 Arquitetura do Sistema
+## Arquitetura do Sistema
 
 O PSAI utiliza um modelo cliente-servidor monorepo. O fluxo de dados básico pode ser visualizado abaixo:
 
@@ -53,7 +60,7 @@ graph TD
 
 ---
 
-## 🧠 Lógica da Arquitetura de IA
+## Lógica da Arquitetura de IA
 
 A inteligência artificial do PSAI não é apenas um chatbot genérico; ela é guiada por uma pipeline lógica robusta e ética:
 
@@ -79,7 +86,7 @@ O prompt de sistema do Gemini combina escuta ativa terapêutica, regras clínica
 
 ---
 
-## 🚀 Como Executar o Projeto Localmente
+## Como Executar o Projeto Localmente
 
 ### 1. Pré-requisitos
 - Node.js (v18+) instalado.
@@ -112,6 +119,6 @@ O Frontend estará rodando na porta **3000** (`http://localhost:3000`) e o Backe
 
 ---
 
-## 🛡️ Segurança e .gitignore
+## Segurança e .gitignore
 Este repositório está configurado para não subir credenciais, chaves de API, segredos JWT ou arquivos temporários de dados. 
 - O arquivo `.gitignore` raiz ignora de forma abrangente as pastas de compilação (`dist`, `build`), arquivos de ambiente (`.env*`), caches de agentes (`.gemini`, `.agents`, `graphify-out`), banco de dados sqlite local (`*.db`) e quaisquer pastas de trabalho temporárias.
