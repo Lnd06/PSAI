@@ -1,17 +1,11 @@
 {
-  "version": 2,
   "services": {
-    "backend": {
+    "web": {
       "root": "backend/",
       "entrypoint": "Dockerfile.vercel"
     }
   },
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": {
-        "service": "backend"
-      }
-    }
+    { "source": "/(.*)", "destination": { "service": "web" } }
   ]
 }
