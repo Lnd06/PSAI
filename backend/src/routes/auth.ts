@@ -90,7 +90,7 @@ router.post('/register', async (req: Request, res: Response) => {
         securityQuestion2: validatedData.securityQuestion2,
         securityAnswer2Hash,
         openRouterApiKey: null,
-        aiModel: 'llama-3.1-8b-instant'
+        aiModel: 'gemini-flash-latest'
       }
     });
 

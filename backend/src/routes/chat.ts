@@ -155,8 +155,11 @@ router.post(
       if (error.message === 'SESSION_NOT_FOUND') {
         return res.status(404).json({ message: 'Diário não encontrado' });
       }
-      console.error('Error handling chat message:', error);
-      return res.status(500).json({ message: 'Erro interno ao processar mensagem' });
+      console.error('[Chat Message Error]:', error.stack || error.message || error);
+      return res.status(500).json({ 
+        message: 'Erro interno ao processar mensagem',
+        error: error.message || 'Erro desconhecido'
+      });
     }
   }
 );

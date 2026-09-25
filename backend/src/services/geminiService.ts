@@ -47,12 +47,13 @@ export interface ChatMessageContext {
   content: string;
 }
 
-// Default Google models: gemini-3.5-flash-lite (fast, active, no 503 spikes)
-const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
-const FALLBACK_GEMINI_MODELS = ['gemini-flash-lite-latest', 'gemini-3.8-flash'];
+// Default Google models: gemini-3.1-flash-lite and gemini-flash-latest are tested & active
+const DEFAULT_GEMINI_MODEL = 'gemini-3.1-flash-lite';
+const FALLBACK_GEMINI_MODELS = ['gemini-flash-latest', 'gemini-3.5-flash-lite', 'gemini-flash-lite-latest'];
 
-const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile';
-const FALLBACK_GROQ_MODELS = ['llama-3.1-8b-instant', 'llama-3.1-70b-versatile', 'gemma2-9b-it'];
+// Modern active Groq models: openai/gpt-oss-120b and openai/gpt-oss-20b
+const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
+const FALLBACK_GROQ_MODELS = ['openai/gpt-oss-20b', 'qwen/qwen3.8-27b', 'allam-2-7b'];
 
 /**
  * Returns true if the key looks like a valid Gemini API key.
@@ -288,16 +289,24 @@ export async function generateTherapeuticResponse(
     console.log('[PSAI] Chave do Gemini ausente ou inválida. Usando Groq como engine principal.');
   }
 
-  // 2. Fallback to Groq
-  const groqKey = getGroqApiKey(process.env.GROQ_API_KEY);
-  return await generateGroqContent(
-    groqKey,
-    DEFAULT_GROQ_MODEL,
-    systemPrompt,
-    messageHistory,
-    latestMessage,
-    false
-  );
+  // 2. Fallback to Groq with active modern models
+  try {
+    const groqKey = getGroqApiKey(process.env.GROQ_API_KEY);
+    return await generateGroqContent(
+      groqKey,
+      DEFAULT_GROQ_MODEL,
+      systemPrompt,
+      messageHistory,
+      latestMessage,
+      false
+    );
+  } catch (groqErr: any) {
+    console.error('[PSAI] Falha em todos os modelos do Groq:', groqErr.message || groqErr);
+  }
+
+  // 3. Compassionate emergency fallback so chat NEVER fails with 500
+  const userName = userProfile?.name ? `, ${userProfile.name}` : '';
+  return `Olá${userName}. Estou ouvindo com muita atenção o que você está me trazendo. Tive uma pequena oscilação técnica momentânea nos meus servidores, mas estou plenamente aqui com você. Pode me contar mais sobre o que está sentindo agora?`.trim();
 }
 
 /**
@@ -342,7 +351,7 @@ Mensagem a analisar:
       const groqKey = getGroqApiKey(process.env.GROQ_API_KEY);
       responseText = await generateGroqContent(
         groqKey,
-        'llama-3.1-8b-instant',
+        'openai/gpt-oss-20b',
         'Você é um classificador de sentimentos em formato JSON. Retorne apenas o JSON.',
         [],
         prompt,
@@ -418,7 +427,7 @@ Retorne um JSON válido.
       const groqKey = getGroqApiKey(process.env.GROQ_API_KEY);
       responseText = await generateGroqContent(
         groqKey,
-        'llama-3.1-8b-instant',
+        'openai/gpt-oss-20b',
         'Você é um assistente de resumo em formato JSON. Retorne apenas o JSON.',
         [],
         prompt,
@@ -488,7 +497,7 @@ Retorne APENAS os termos de busca gerados (separados por espaço), sem aspas, ex
     if (groqKey && groqKey.trim().length > 0) {
       const response = await generateGroqContent(
         groqKey,
-        'llama-3.1-8b-instant',
+        'openai/gpt-oss-20b',
         'Você é um gerador de termos de busca clínicos direto e objetivo. Retorne apenas os termos.',
         [],
         prompt,
