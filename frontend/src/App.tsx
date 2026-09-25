@@ -12,7 +12,8 @@ import { Plans } from './components/Plans';
 
 // Configure dynamic API URL resolution for production builds
 axios.interceptors.request.use((config) => {
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const apiUrl = rawApiUrl.replace(/\/+$/, '');
   if (config.url && config.url.startsWith('http://localhost:5000')) {
     config.url = config.url.replace('http://localhost:5000', apiUrl);
   }
@@ -53,14 +54,18 @@ export const App: React.FC = () => {
           } else {
             handleLogout();
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('Failed to validate token on load:', error);
-          // If server is down, keep the cached user session so they can work with simulation/mock
-          try {
-            setUser(JSON.parse(storedUser));
-            setToken(storedToken);
-          } catch {
+          if (error.response && (error.response.status === 401 || error.response.status === 403)) {
             handleLogout();
+          } else {
+            // If server is unreachable (network error), keep the cached session for offline work
+            try {
+              setUser(JSON.parse(storedUser));
+              setToken(storedToken);
+            } catch {
+              handleLogout();
+            }
           }
         }
       } else {

@@ -175,8 +175,9 @@ router.post('/tts', authenticateToken, async (req: AuthenticatedRequest, res: Re
     console.log(`[TTS Route] Recebida solicitação de voz para texto: "${text.substring(0, 40)}..." | Voice: ${voice} | Emotion: ${emotion}`);
     const audioBuffer = await generateSpeech(text, voice, emotion);
 
+    const isWav = audioBuffer.length >= 4 && audioBuffer.toString('ascii', 0, 4) === 'RIFF';
     res.set({
-      'Content-Type': 'audio/mpeg',
+      'Content-Type': isWav ? 'audio/wav' : 'audio/mpeg',
       'Content-Length': audioBuffer.length
     });
 

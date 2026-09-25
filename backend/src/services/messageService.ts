@@ -95,78 +95,62 @@ export async function processUserMessage(
     throw new Error('SESSION_NOT_FOUND');
   }
 
-  // 1. Analyze sentiment in real-time (non-blocking: default to Neutral if it fails)
-  let sentiment = 'Neutral';
-  let score = 50;
-  try {
-    const sentimentResult = await analyzeSentiment(
-      content,
-      session.user.geminiApiKey || session.user.openRouterApiKey,
-      session.user.aiModel && session.user.aiModel.includes('gemini') ? session.user.aiModel : null
-    );
-    sentiment = sentimentResult.sentiment;
-    score = sentimentResult.score;
-  } catch (sentErr) {
-    console.error('[PSAI] Sentiment analysis failed, using defaults:', sentErr);
-  }
+  const trimmedContent = content.trim();
+  const isSimpleGreeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite|tudo bem|tudo bom|hey|hello|hi|e aí|e ai)(\s|!|\?|\.)*$/i.test(trimmedContent);
 
-  // 2. Save user message to database
-  const userMessage = await prisma.message.create({
-    data: {
-      sessionId,
-      sender: 'user',
-      content: content.trim(),
-      sentiment,
-      sentimentScore: score
-    }
-  });
-
-  // 3. Retrieve past messages for local context
-  const pastMessages = await prisma.message.findMany({
+  // 1. Parallel Context Gathering: Local history, MySQL RAG memories, and Pinecone scientific library
+  const pastMessagesPromise = prisma.message.findMany({
     where: { sessionId },
     orderBy: { createdAt: 'asc' },
-    take: 12 // limit history context to last 12 messages for performance
+    take: 12
   });
 
-  // Prepare context for Gemini model
-  const formattedHistory: ChatMessageContext[] = pastMessages
-    .filter((m) => m.id !== userMessage.id) // exclude current message
-    .map((m) => ({
-      sender: m.sender as 'user' | 'ai',
-      content: m.content
-    }));
+  // Skip deep scientific RAG retrieval on simple greetings to respond in milliseconds
+  const pastMemoriesPromise = isSimpleGreeting
+    ? Promise.resolve('')
+    : retrievePastMemories(userId, sessionId, trimmedContent);
 
-  // 3.5 Retrieve past memories using RAG on MySQL
-  const pastMemories = await retrievePastMemories(userId, sessionId, content.trim());
+  const libraryContextPromise = isSimpleGreeting
+    ? Promise.resolve('')
+    : (async () => {
+        try {
+          return await queryLibrary(trimmedContent);
+        } catch (ragErr) {
+          console.warn('[PSAI] RAG Library retrieval skipped:', ragErr);
+          return '';
+        }
+      })();
 
-  // Query RAG Library from Pinecone (uses Pinecone's built-in embedding model)
-  console.log(`[RAG Service] Acessando biblioteca: Buscando trechos científicos para a consulta: "${content.trim()}"`);
-  let libraryContext = '';
-  try {
-    // AI query expansion: generates scientific terms to match the Pinecone index accurately
-    const expandedQuery = await generateSearchQuery(
-      content.trim(),
-      session.user.geminiApiKey || session.user.openRouterApiKey,
-      session.user.aiModel && session.user.aiModel.includes('gemini') ? session.user.aiModel : null
-    );
-    libraryContext = await queryLibrary(expandedQuery);
-    if (libraryContext && libraryContext.trim().length > 0) {
-      console.log(`[RAG Service] Sucesso! Trechos relevantes de livros científicos recuperados para inclusão no prompt da IA.`);
-    } else {
-      console.log(`[RAG Service] Busca concluída: Nenhum trecho com pontuação relevante (>0.45) encontrado na biblioteca.`);
-    }
-  } catch (ragErr) {
-    console.error('[PSAI] Falha ao acessar a biblioteca RAG no Pinecone:', ragErr);
-  }
+  const [pastMessages, pastMemories, libraryContext] = await Promise.all([
+    pastMessagesPromise,
+    pastMemoriesPromise,
+    libraryContextPromise
+  ]);
 
-  // 4. Generate AI response (passing summaries, OpenRouter settings, RAG context, library context, and user identity profile)
-  const aiContent = await generateTherapeuticResponse(
+  const formattedHistory: ChatMessageContext[] = pastMessages.map((m) => ({
+    sender: m.sender as 'user' | 'ai',
+    content: m.content
+  }));
+
+  const userModelSetting = session.user.aiModel && session.user.aiModel.includes('gemini') ? session.user.aiModel : null;
+  const userApiKey = session.user.geminiApiKey || session.user.openRouterApiKey;
+
+  // Compute session timing and detect if user explicitly wants to continue the conversation
+  const sessionStartTime = pastMessages.length > 0
+    ? new Date(pastMessages[0].createdAt).getTime()
+    : new Date(session.createdAt).getTime();
+  const elapsedMinutes = Math.max(0, Math.floor((Date.now() - sessionStartTime) / 60000));
+  const messageCount = pastMessages.length + 1;
+  const userWantsToContinue = /continua|continuar|mais um pouco|quero falar mais|ainda n[aã]o|n[aã]o para|vamos prosseguir|pode continuar|vamos em frente|tenho mais|prosseguir/i.test(trimmedContent);
+
+  // 2. Concurrently run AI Therapeutic Response Generation and Sentiment Analysis
+  const aiContentPromise = generateTherapeuticResponse(
     formattedHistory,
-    content.trim(),
+    trimmedContent,
     session.summaryShort || undefined,
     session.summaryLong || undefined,
-    session.user.geminiApiKey || session.user.openRouterApiKey,
-    session.user.aiModel && session.user.aiModel.includes('gemini') ? session.user.aiModel : null,
+    userApiKey,
+    userModelSetting,
     pastMemories,
     libraryContext,
     {
@@ -174,22 +158,46 @@ export async function processUserMessage(
       email: session.user.email,
       telefone: session.user.telefone,
       profileJson: session.user.profileJson
+    },
+    {
+      elapsedMinutes,
+      messageCount,
+      userWantsToContinue
     }
   );
 
-  // Background update: Extract and save learned profile information (tastes, preferences, name)
-  updateUserProfile(userId, content.trim(), aiContent)
-    .catch((err) => console.error('[Profile Service] Erro ao atualizar perfil do usuário:', err));
+  const sentimentPromise = isSimpleGreeting
+    ? Promise.resolve({ sentiment: 'Happy', score: 80 })
+    : analyzeSentiment(trimmedContent, userApiKey, userModelSetting).catch(() => ({ sentiment: 'Neutral', score: 50 }));
 
-  // Classify emotion of the AI response using the custom Naive Bayes classifier
-  let aiEmotion = 'Neutro';
-  try {
-    aiEmotion = await classifyEmotion(aiContent);
-  } catch (emErr) {
-    console.error('[PSAI] AI emotion classification failed:', emErr);
-  }
+  const [aiContent, sentimentResult] = await Promise.all([
+    aiContentPromise,
+    sentimentPromise
+  ]);
 
-  // 5. Save AI response to DB
+  const sentiment = sentimentResult.sentiment || 'Neutral';
+  const score = typeof sentimentResult.score === 'number' ? sentimentResult.score : 50;
+
+  // 3. Fast emotion classification (fallback to 'Neutro' if python takes > 150ms so response is never held back)
+  const emotionPromise = Promise.race([
+    classifyEmotion(aiContent).catch(() => 'Neutro'),
+    new Promise<string>((resolve) => setTimeout(() => resolve('Neutro'), 150))
+  ]);
+
+  // 4. Save user message and AI message to database
+  const [userMessage, aiEmotion] = await Promise.all([
+    prisma.message.create({
+      data: {
+        sessionId,
+        sender: 'user',
+        content: trimmedContent,
+        sentiment,
+        sentimentScore: score
+      }
+    }),
+    emotionPromise
+  ]);
+
   const aiMessage = await prisma.message.create({
     data: {
       sessionId,
@@ -199,43 +207,41 @@ export async function processUserMessage(
     }
   });
 
-  // 6. Asynchronously update summaries to maintain memory
-  // Gather all messages for summarization
-  const allSessionMessages = await prisma.message.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: 'asc' }
-  });
+  // 5. Fire background tasks without blocking client HTTP response:
+  // Profile update
+  updateUserProfile(userId, trimmedContent, aiContent)
+    .catch((err) => console.error('[Profile Service] Erro ao atualizar perfil do usuário:', err));
 
-  const messageCtxList: ChatMessageContext[] = allSessionMessages.map((m) => ({
-    sender: m.sender as 'user' | 'ai',
-    content: m.content
-  }));
-
-  // Run summary updating in the background to avoid delaying client response
-  generateSessionSummaries(
-    messageCtxList,
-    session.user.geminiApiKey || session.user.openRouterApiKey,
-    session.user.aiModel && session.user.aiModel.includes('gemini') ? session.user.aiModel : null
-  )
-    .then(async (summaries) => {
+  // Asynchronous summaries update
+  (async () => {
+    try {
+      const allSessionMessages = await prisma.message.findMany({
+        where: { sessionId },
+        orderBy: { createdAt: 'asc' }
+      });
+      const messageCtxList: ChatMessageContext[] = allSessionMessages.map((m) => ({
+        sender: m.sender as 'user' | 'ai',
+        content: m.content
+      }));
+      const summaries = await generateSessionSummaries(messageCtxList, userApiKey, userModelSetting);
       await prisma.session.update({
         where: { id: sessionId },
         data: {
           summaryShort: summaries.summaryShort,
           summaryLong: summaries.summaryLong,
-          updatedAt: new Date() // force refresh updatedAt timestamp
+          updatedAt: new Date()
         }
       });
-    })
-    .catch((err) => {
+    } catch (err) {
       console.error('Error running background summaries update:', err);
-    });
+    }
+  })();
 
-  // 7. Otimização de Latência: Gerar áudio ElevenLabs diretamente na rota de mensagem se solicitado
+  // 6. Optional audio pre-generation
   let audioBase64: string | undefined = undefined;
   if (generateAudio) {
     try {
-      console.log(`[TTS Service] Otimização: pré-gerando áudio ElevenLabs em paralelo para responder mais rápido...`);
+      console.log(`[TTS Service] Otimização: pré-gerando áudio em paralelo...`);
       const audioBuffer = await generateSpeech(aiContent, voice, aiEmotion);
       audioBase64 = audioBuffer.toString('base64');
     } catch (ttsErr) {

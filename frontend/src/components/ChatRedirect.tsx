@@ -39,6 +39,12 @@ export const ChatRedirect: React.FC<ChatRedirectProps> = ({ token }) => {
         }
       } catch (err: any) {
         console.error('Error in ChatRedirect:', err);
+        if (err.response && (err.response.status === 401 || err.response.status === 403)) {
+          localStorage.removeItem('psai_token');
+          localStorage.removeItem('psai_user');
+          navigate('/login', { replace: true });
+          return;
+        }
         setError('Falha ao conectar com o servidor. Tente novamente mais tarde.');
       }
     };

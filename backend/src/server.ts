@@ -6,6 +6,17 @@ import path from 'path';
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
+// Clean any accidental surrounding quotes from environment variables (common in Docker)
+for (const key of Object.keys(process.env)) {
+  const val = process.env[key];
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      process.env[key] = trimmed.slice(1, -1);
+    }
+  }
+}
+
 import authRouter from './routes/auth';
 import chatRouter from './routes/chat';
 import dashboardRouter from './routes/dashboard';
