@@ -11,10 +11,12 @@ import { Library } from './components/Library';
 import { Plans } from './components/Plans';
 
 // Configure dynamic API URL resolution for production builds
-// When VITE_API_URL is not set and frontend is served from the same container,
-// use relative paths (empty string) so requests go to the same origin.
+// If VITE_API_URL is empty or points to the defunct Cloud Run instance, use relative paths so requests hit the container's own backend
 axios.interceptors.request.use((config) => {
-  const rawApiUrl = import.meta.env.VITE_API_URL || '';
+  let rawApiUrl = (import.meta.env.VITE_API_URL || '').trim();
+  if (!rawApiUrl || rawApiUrl.includes('psai-backend-794942769529.us-central1.run.app')) {
+    rawApiUrl = '';
+  }
   const apiUrl = rawApiUrl.replace(/\/+$/, '');
   if (config.url && config.url.startsWith('http://localhost:5000')) {
     config.url = config.url.replace('http://localhost:5000', apiUrl);

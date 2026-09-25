@@ -42,5 +42,5 @@ ENV PYTHON_PATH=python3
 # Vercel injects the $PORT environment variable automatically
 EXPOSE 8080
 
-# Automatically push database schema updates and start the server
-CMD ["sh", "-c", "npx prisma db push || echo 'Prisma push skipped'; npm start"]
+# Start the server immediately (schema is already synced)
+CMD ["node", "dist/server.js"]

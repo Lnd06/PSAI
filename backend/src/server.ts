@@ -24,11 +24,19 @@ import libraryRouter from './routes/library';
 import paymentsRouter from './routes/payments';
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 8080;
+
+// Request logger for troubleshooting
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  next();
+});
 
 // Middleware
+// origin: true dynamically reflects the requesting origin, which works with credentials: true
+// whereas origin: '*' is rejected by modern browsers when credentials: true is set
 app.use(cors({
-  origin: '*', // Allow all origins for local development/testing, can restrict to frontend URL in production
+  origin: true,
   credentials: true
 }));
 app.use(express.json());
@@ -68,7 +76,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ message: 'Ocorreu um erro interno no servidor.' });
 });
 
-// Start listening
-app.listen(PORT, () => {
-  console.log(`[PSAI Backend] Server is running on http://localhost:${PORT}`);
+// Start listening explicitly on 0.0.0.0 for containerized environments
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[PSAI Backend] Server is running on http://0.0.0.0:${PORT}`);
 });
