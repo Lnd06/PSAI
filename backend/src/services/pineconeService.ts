@@ -226,50 +226,65 @@ export async function deleteBookChunks(bookId: string, content: string): Promise
   }
 }
 
+const RAG_CACHE = new Map<string, { result: string; timestamp: number }>();
+const CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
+
 /**
- * Queries Pinecone for relevant support text chunks.
+ * Queries Pinecone for relevant support text chunks with in-memory caching and strict 1200ms timeout.
  */
 export async function queryLibrary(queryText: string, _geminiApiKey?: string): Promise<string> {
-  try {
-    const embedding = await generateEmbedding(queryText, 'query');
-    
-    const index = pc.index(pineconeIndex);
-    const namespace = index.namespace(pineconeNamespace);
-
-    const queryResponse = await namespace.query({
-      vector: embedding,
-      topK: 3,
-      includeMetadata: true
-    });
-
-    if (!queryResponse || !queryResponse.matches || queryResponse.matches.length === 0) {
-      console.log(`[RAG Service] A busca no Pinecone não retornou nenhum vetor.`);
-      return '';
-    }
-
-    console.log(`[RAG Service] Busca no Pinecone retornou ${queryResponse.matches.length} correspondências.`);
-    queryResponse.matches.forEach((m, idx) => {
-      const meta = m.metadata as any;
-      console.log(`  -> Match #${idx + 1}: "${meta?.title || 'Sem título'}" (Score: ${(m.score ?? 0).toFixed(4)})`);
-    });
-
-    // Filter matches with high similarity score (> 0.45)
-    const matchesFiltered = queryResponse.matches.filter(m => m.score !== undefined && m.score > 0.45);
-    if (matchesFiltered.length === 0) {
-      console.log(`[RAG Service] Nenhum match ultrapassou o limiar de similaridade de 0.45.`);
-      return '';
-    }
-
-    console.log(`[RAG Service] ${matchesFiltered.length} correspondências ultrapassaram o limiar de 0.45.`);
-
-    const contextFormatted = matchesFiltered.map(match => {
-      const metadata = match.metadata as any;
-      return `[Trecho de "${metadata.title}" por ${metadata.author}]:\n"${metadata.text}"`;
-    }).join('\n\n');
-
-    return contextFormatted;
-  } catch (error) {
-    console.error('[RAG Service] Falha ao consultar biblioteca no Pinecone:', error);
-    return '';
+  const normalizedKey = queryText.trim().toLowerCase();
+  const cached = RAG_CACHE.get(normalizedKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    console.log(`[RAG Service] Cache HIT para "${normalizedKey.slice(0, 30)}..."`);
+    return cached.result;
   }
+
+  const queryExecution = async (): Promise<string> => {
+    try {
+      const embedding = await generateEmbedding(queryText, 'query');
+      
+      const index = pc.index(pineconeIndex);
+      const namespace = index.namespace(pineconeNamespace);
+
+      const queryResponse = await namespace.query({
+        vector: embedding,
+        topK: 3,
+        includeMetadata: true
+      });
+
+      if (!queryResponse || !queryResponse.matches || queryResponse.matches.length === 0) {
+        return '';
+      }
+
+      const matchesFiltered = queryResponse.matches.filter(m => m.score !== undefined && m.score > 0.45);
+      if (matchesFiltered.length === 0) {
+        return '';
+      }
+
+      const contextFormatted = matchesFiltered.map(match => {
+        const metadata = match.metadata as any;
+        return `[Trecho de "${metadata.title}" por ${metadata.author}]:\n"${metadata.text}"`;
+      }).join('\n\n');
+
+      if (contextFormatted) {
+        RAG_CACHE.set(normalizedKey, { result: contextFormatted, timestamp: Date.now() });
+      }
+
+      return contextFormatted;
+    } catch (error) {
+      console.warn('[RAG Service] Falha não impeditiva ao consultar Pinecone:', error);
+      return '';
+    }
+  };
+
+  // Enforce a strict 1200ms timeout so RAG never delays conversational flow
+  const timeoutPromise = new Promise<string>((resolve) => 
+    setTimeout(() => {
+      console.warn('[RAG Service] Limite de 1200ms atingido. Continuando fluxo para resposta instantânea.');
+      resolve('');
+    }, 1200)
+  );
+
+  return Promise.race([queryExecution(), timeoutPromise]);
 }

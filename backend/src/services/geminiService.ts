@@ -140,7 +140,7 @@ async function generateGroqContent(
   latestMessage: string,
   isJson: boolean = false
 ): Promise<string> {
-  const cleanModel = (primaryModel && !primaryModel.includes('/') && !primaryModel.includes(':') && !primaryModel.startsWith('gemini')) ? primaryModel : DEFAULT_GROQ_MODEL;
+  const cleanModel = (primaryModel && !primaryModel.includes(':') && !primaryModel.startsWith('gemini')) ? primaryModel : DEFAULT_GROQ_MODEL;
   
   const modelsToTry = [
     cleanModel,
@@ -259,7 +259,24 @@ export async function generateTherapeuticResponse(
     }
   }
 
-  // 1. Try Gemini if the key looks valid
+  // 1. Try Groq ultra-fast LPU engine first (~1.2s response time)
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey && groqKey.trim().length > 0) {
+    try {
+      return await generateGroqContent(
+        groqKey,
+        DEFAULT_GROQ_MODEL,
+        systemPrompt,
+        messageHistory,
+        latestMessage,
+        false
+      );
+    } catch (groqErr: any) {
+      console.warn('[PSAI] Engine ultra-rápida Groq falhou, caindo para o Gemini...', groqErr.message || groqErr);
+    }
+  }
+
+  // 2. High-quality Gemini fallback
   const geminiKey = process.env.GEMINI_API_KEY;
   if (isValidGeminiKey(geminiKey)) {
     try {
@@ -282,26 +299,9 @@ export async function generateTherapeuticResponse(
         contents,
         false
       );
-    } catch (geminiErr) {
-      console.warn('[PSAI] Chamada nativa ao Gemini falhou, caindo para o Groq...', geminiErr);
+    } catch (geminiErr: any) {
+      console.warn('[PSAI] Chamada nativa ao Gemini falhou:', geminiErr.message || geminiErr);
     }
-  } else {
-    console.log('[PSAI] Chave do Gemini ausente ou inválida. Usando Groq como engine principal.');
-  }
-
-  // 2. Fallback to Groq with active modern models
-  try {
-    const groqKey = getGroqApiKey(process.env.GROQ_API_KEY);
-    return await generateGroqContent(
-      groqKey,
-      DEFAULT_GROQ_MODEL,
-      systemPrompt,
-      messageHistory,
-      latestMessage,
-      false
-    );
-  } catch (groqErr: any) {
-    console.error('[PSAI] Falha em todos os modelos do Groq:', groqErr.message || groqErr);
   }
 
   // 3. Compassionate emergency fallback so chat NEVER fails with 500

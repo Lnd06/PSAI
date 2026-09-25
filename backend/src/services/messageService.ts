@@ -66,6 +66,31 @@ export async function retrievePastMemories(userId: string, currentSessionId: str
  * Process a user message and orchestrate sentiment analysis, memory retrieval, RAG library matching,
  * therapeutic response generation, background summarization, and optional TTS speech pre-generation.
  */
+/**
+ * Quick heuristic sentiment classifier (< 0.1ms) for instantaneous HTTP response.
+ * Refined asynchronously in the background via deep LLM sentiment analysis.
+ */
+function quickSentimentHeuristic(text: string): { sentiment: string; score: number } {
+  const lower = text.toLowerCase();
+  if (/ansios|pânico|panico|medo|preocupad|nervos|acelerad|angústi|angusti|inquiet|crise|sufoc|desesper/i.test(lower)) {
+    return { sentiment: 'Anxiolytic', score: 35 };
+  }
+  if (/trist|deprim|desânim|desanim|vazio|choro|chorar|sem sentido|solitári|solitari|sozinh|desesperanç|luto|dor/i.test(lower)) {
+    return { sentiment: 'Depressive', score: 25 };
+  }
+  if (/estress|raiva|ódio|odio|irritad|cansad|esgotad|sobrecarreg|pressão|pressao|saco cheio|explodir|impacient/i.test(lower)) {
+    return { sentiment: 'Stressed', score: 40 };
+  }
+  if (/feliz|alegr|grat|paz|tranquil|bem|ótimo|otimo|bom|melhor|esperanç|animad|alívio|alivio|vitóri/i.test(lower)) {
+    return { sentiment: 'Happy', score: 80 };
+  }
+  return { sentiment: 'Neutral', score: 50 };
+}
+
+/**
+ * Process a user message and orchestrate sentiment analysis, memory retrieval, RAG library matching,
+ * therapeutic response generation, background summarization, and optional TTS speech pre-generation.
+ */
 export async function processUserMessage(
   userId: string,
   sessionId: string,
@@ -73,58 +98,45 @@ export async function processUserMessage(
   generateAudio: boolean,
   voice?: string
 ) {
-  // Check session ownership and load user custom AI settings
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-    include: {
-      user: {
-        select: {
-          name: true,
-          email: true,
-          telefone: true,
-          profileJson: true,
-          openRouterApiKey: true,
-          aiModel: true,
-          geminiApiKey: true
+  const trimmedContent = content.trim();
+
+  // 1. Concurrently fetch session and recent conversation history (parallel roundtrips)
+  const [session, pastMessages] = await Promise.all([
+    prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        user: {
+          select: {
+            name: true,
+            email: true,
+            telefone: true,
+            profileJson: true,
+            openRouterApiKey: true,
+            aiModel: true,
+            geminiApiKey: true
+          }
         }
       }
-    }
-  });
+    }),
+    prisma.message.findMany({
+      where: { sessionId },
+      orderBy: { createdAt: 'asc' },
+      take: 12
+    })
+  ]);
 
   if (!session || session.userId !== userId) {
     throw new Error('SESSION_NOT_FOUND');
   }
 
-  const trimmedContent = content.trim();
+  const wordCount = trimmedContent.split(/\s+/).length;
   const isSimpleGreeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite|tudo bem|tudo bom|hey|hello|hi|e aí|e ai)(\s|!|\?|\.)*$/i.test(trimmedContent);
+  const isConversational = isSimpleGreeting || wordCount < 5 || /^(sim|não|nao|ok|certo|entendi|concordo|claro|tá bom|ta bom|obrigad[oa]|valeu)(\s|!|\?|\.)*$/i.test(trimmedContent);
 
-  // 1. Parallel Context Gathering: Local history, MySQL RAG memories, and Pinecone scientific library
-  const pastMessagesPromise = prisma.message.findMany({
-    where: { sessionId },
-    orderBy: { createdAt: 'asc' },
-    take: 12
-  });
-
-  // Skip deep scientific RAG retrieval on simple greetings to respond in milliseconds
-  const pastMemoriesPromise = isSimpleGreeting
-    ? Promise.resolve('')
-    : retrievePastMemories(userId, sessionId, trimmedContent);
-
-  const libraryContextPromise = isSimpleGreeting
-    ? Promise.resolve('')
-    : (async () => {
-        try {
-          return await queryLibrary(trimmedContent);
-        } catch (ragErr) {
-          console.warn('[PSAI] RAG Library retrieval skipped:', ragErr);
-          return '';
-        }
-      })();
-
-  const [pastMessages, pastMemories, libraryContext] = await Promise.all([
-    pastMessagesPromise,
-    pastMemoriesPromise,
-    libraryContextPromise
+  // 2. Selective RAG: Skip heavy Pinecone lookups on short conversational messages for instant speed
+  const [pastMemories, libraryContext] = await Promise.all([
+    isConversational ? Promise.resolve('') : retrievePastMemories(userId, sessionId, trimmedContent),
+    isConversational ? Promise.resolve('') : queryLibrary(trimmedContent)
   ]);
 
   const formattedHistory: ChatMessageContext[] = pastMessages.map((m) => ({
@@ -143,8 +155,13 @@ export async function processUserMessage(
   const messageCount = pastMessages.length + 1;
   const userWantsToContinue = /continua|continuar|mais um pouco|quero falar mais|ainda n[aã]o|n[aã]o para|vamos prosseguir|pode continuar|vamos em frente|tenho mais|prosseguir/i.test(trimmedContent);
 
-  // 2. Concurrently run AI Therapeutic Response Generation and Sentiment Analysis
-  const aiContentPromise = generateTherapeuticResponse(
+  // 3. Fast Heuristic Sentiment for instant HTTP response
+  const fastSentiment = isSimpleGreeting
+    ? { sentiment: 'Happy', score: 80 }
+    : quickSentimentHeuristic(trimmedContent);
+
+  // 4. Generate AI Therapeutic Response
+  const aiContent = await generateTherapeuticResponse(
     formattedHistory,
     trimmedContent,
     session.summaryShort || undefined,
@@ -166,48 +183,46 @@ export async function processUserMessage(
     }
   );
 
-  const sentimentPromise = isSimpleGreeting
-    ? Promise.resolve({ sentiment: 'Happy', score: 80 })
-    : analyzeSentiment(trimmedContent, userApiKey, userModelSetting).catch(() => ({ sentiment: 'Neutral', score: 50 }));
-
-  const [aiContent, sentimentResult] = await Promise.all([
-    aiContentPromise,
-    sentimentPromise
-  ]);
-
-  const sentiment = sentimentResult.sentiment || 'Neutral';
-  const score = typeof sentimentResult.score === 'number' ? sentimentResult.score : 50;
-
-  // 3. Fast emotion classification (fallback to 'Neutro' if python takes > 150ms so response is never held back)
-  const emotionPromise = Promise.race([
+  // 5. Emotion classification (capped at 100ms)
+  const aiEmotion = await Promise.race([
     classifyEmotion(aiContent).catch(() => 'Neutro'),
-    new Promise<string>((resolve) => setTimeout(() => resolve('Neutro'), 150))
+    new Promise<string>((resolve) => setTimeout(() => resolve('Neutro'), 100))
   ]);
 
-  // 4. Save user message and AI message to database
-  const [userMessage, aiEmotion] = await Promise.all([
+  // 6. Save user message and AI message to database concurrently
+  const [userMessage, aiMessage] = await Promise.all([
     prisma.message.create({
       data: {
         sessionId,
         sender: 'user',
         content: trimmedContent,
-        sentiment,
-        sentimentScore: score
+        sentiment: fastSentiment.sentiment,
+        sentimentScore: fastSentiment.score
       }
     }),
-    emotionPromise
+    prisma.message.create({
+      data: {
+        sessionId,
+        sender: 'ai',
+        content: aiContent,
+        sentiment: aiEmotion
+      }
+    })
   ]);
 
-  const aiMessage = await prisma.message.create({
-    data: {
-      sessionId,
-      sender: 'ai',
-      content: aiContent,
-      sentiment: aiEmotion
-    }
-  });
+  // 7. Non-blocking asynchronous tasks (runs in background without delaying user reply):
+  // Asynchronous Deep Sentiment Refinement
+  if (!isSimpleGreeting) {
+    analyzeSentiment(trimmedContent, userApiKey, userModelSetting)
+      .then(async (deep) => {
+        await prisma.message.update({
+          where: { id: userMessage.id },
+          data: { sentiment: deep.sentiment, sentimentScore: deep.score }
+        }).catch(() => {});
+      })
+      .catch(() => {});
+  }
 
-  // 5. Fire background tasks without blocking client HTTP response:
   // Profile update
   updateUserProfile(userId, trimmedContent, aiContent)
     .catch((err) => console.error('[Profile Service] Erro ao atualizar perfil do usuário:', err));
@@ -256,8 +271,8 @@ export async function processUserMessage(
       audioBase64
     },
     sentiment: {
-      category: sentiment,
-      score
+      category: fastSentiment.sentiment,
+      score: fastSentiment.score
     }
   };
 }
