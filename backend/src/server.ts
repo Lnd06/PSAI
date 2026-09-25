@@ -45,6 +45,23 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date() });
 });
 
+// Serve frontend static build files (SPA)
+const publicDir = path.join(__dirname, '../public');
+app.use(express.static(publicDir));
+
+// Fallback to index.html for Single Page Application (SPA) routing
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path === '/health') {
+    return next();
+  }
+  const indexPath = path.join(publicDir, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      res.status(200).send('PSAI API is running. (Frontend dist not mounted)');
+    }
+  });
+});
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);
