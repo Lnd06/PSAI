@@ -11,8 +11,10 @@ import { Library } from './components/Library';
 import { Plans } from './components/Plans';
 
 // Configure dynamic API URL resolution for production builds
+// When VITE_API_URL is not set and frontend is served from the same container,
+// use relative paths (empty string) so requests go to the same origin.
 axios.interceptors.request.use((config) => {
-  const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+  const rawApiUrl = import.meta.env.VITE_API_URL || '';
   const apiUrl = rawApiUrl.replace(/\/+$/, '');
   if (config.url && config.url.startsWith('http://localhost:5000')) {
     config.url = config.url.replace('http://localhost:5000', apiUrl);
