@@ -77,6 +77,8 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const transcriptionRecognitionRef = useRef<any>(null);
+  const isVoiceMessageRef = useRef<boolean>(false);
+  const latestAudioTranscriptRef = useRef<string>('');
 
   const voiceModeActiveRef = useRef(false);
   const sendingRef = useRef(false);
@@ -172,7 +174,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     return rec;
   };
 
-  // Start Speech Transcription (Speech to Text) without auto-sending
+  // Start Audio Recording (Modo Áudio / Speech to Text with Voice Response)
   const startTranscription = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
@@ -187,29 +189,43 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     }
 
     const rec = new SpeechRecognition();
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.continuous = true;
+    rec.interimResults = true;
     rec.lang = 'pt-BR';
 
     rec.onstart = () => {
       setIsTranscribing(true);
+      isVoiceMessageRef.current = true;
     };
 
     rec.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      if (text && text.trim()) {
-        setInputMsg((prev) => prev ? prev + " " + text : text);
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = 0; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
+        } else {
+          interimTranscript += event.results[i][0].transcript;
+        }
+      }
+
+      const fullText = (finalTranscript + interimTranscript).trim();
+      if (fullText) {
+        setInputMsg(fullText);
+        latestAudioTranscriptRef.current = fullText;
+        isVoiceMessageRef.current = true;
       }
     };
 
     rec.onerror = (event: any) => {
-      console.error('Transcription error:', event.error);
+      console.error('Audio recording error:', event.error);
       if (event.error === 'not-allowed') {
-        setError('Permissão do microfone negada para transcrição.');
+        setError('Permissão do microfone negada para gravar áudio.');
       } else if (event.error === 'no-speech') {
-        setError('Nenhuma fala detectada. Fale mais alto ou próximo ao microfone.');
+        // Silent timeout
       } else {
-        setError(`Erro de transcrição: ${event.error}`);
+        setError(`Erro na gravação de áudio: ${event.error}`);
       }
       setIsTranscribing(false);
     };
@@ -226,18 +242,26 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     }
   };
 
-  const stopTranscription = () => {
+  const stopTranscription = (autoSend: boolean = false) => {
     if (transcriptionRecognitionRef.current) {
       try {
         transcriptionRecognitionRef.current.stop();
       } catch (e) {}
     }
     setIsTranscribing(false);
+
+    if (autoSend) {
+      const text = (latestAudioTranscriptRef.current || inputMsg).trim();
+      if (text) {
+        handleSendMessage(text, true);
+      }
+    }
   };
 
   const toggleTranscription = () => {
     if (isTranscribing) {
-      stopTranscription();
+      // User pressed Stop button on microphone: stop and automatically send with voice response
+      stopTranscription(true);
     } else {
       startTranscription();
     }
@@ -407,12 +431,25 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     }
   }, [session?.messages, sending, loading]);
 
-  const handleSendMessage = async (textToSend?: string) => {
+  const handleSendMessage = async (textToSend?: string, forceVoiceResponse?: boolean) => {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (e) {}
     }
+    if (transcriptionRecognitionRef.current) {
+      try { transcriptionRecognitionRef.current.stop(); } catch (e) {}
+    }
+    setIsTranscribing(false);
+
     const messageText = (typeof textToSend === 'string' ? textToSend : inputMsg).trim();
     if (!messageText || sending) return;
+
+    // Responds by voice if recorded by mic/audio mode, if voice conversation mode is on, or if forceVoiceResponse is true
+    const shouldRespondWithVoice = voiceModeActiveRef.current || isVoiceMessageRef.current || forceVoiceResponse === true;
+
+    // Reset voice message flag for future typed messages
+    isVoiceMessageRef.current = false;
+    latestAudioTranscriptRef.current = '';
+
     setInputMsg('');
     setSending(true);
     setError('');
@@ -436,7 +473,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
         `http://localhost:5000/api/chat/${sessionId}/message`,
         { 
           content: messageText,
-          generateAudio: voiceModeActiveRef.current,
+          generateAudio: shouldRespondWithVoice,
           voice: selectedVoiceRef.current
         },
         { headers: { Authorization: `Bearer ${token}` } }
@@ -456,17 +493,22 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
       }
       fetchSidebarSessions();
 
-      if (voiceModeActiveRef.current) {
+      if (shouldRespondWithVoice) {
         if (aiMessage.audioBase64) {
           try {
-            console.log('[Voice Mode] Reproduzindo áudio ElevenLabs recebido diretamente na rota de chat...');
+            console.log('[Audio Mode] Reproduzindo resposta em voz da IA...');
             const binaryString = window.atob(aiMessage.audioBase64);
             const len = binaryString.length;
             const bytes = new Uint8Array(len);
             for (let i = 0; i < len; i++) {
               bytes[i] = binaryString.charCodeAt(i);
             }
-            const blob = new Blob([bytes.buffer], { type: 'audio/mpeg' });
+            
+            const isWav = bytes.length >= 4 &&
+              String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) === 'RIFF';
+            const mimeType = isWav ? 'audio/wav' : 'audio/mpeg';
+
+            const blob = new Blob([bytes.buffer], { type: mimeType });
             const audioUrl = URL.createObjectURL(blob);
             const audio = new Audio(audioUrl);
             
@@ -478,6 +520,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
             audio.onended = () => {
               setIsSpeaking(false);
+              // Only auto-restart recognition if continuous interactive Voice Mode is active
               if (voiceModeActiveRef.current && !sendingRef.current) {
                 try { recognitionRef.current?.start(); } catch (e) {
                   console.error('Error restarting recognition:', e);
@@ -739,12 +782,17 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
         <ChatInput
           inputMsg={inputMsg}
-          setInputMsg={setInputMsg}
+          setInputMsg={(val) => {
+            setInputMsg(val);
+            if (!isTranscribing) {
+              isVoiceMessageRef.current = false;
+            }
+          }}
           sending={sending}
           voiceModeActive={voiceModeActive}
           isSpeaking={isSpeaking}
           isTranscribing={isTranscribing}
-          onSendMessage={handleSendMessage}
+          onSendMessage={() => handleSendMessage(inputMsg, isVoiceMessageRef.current || isTranscribing)}
           onToggleVoiceMode={toggleVoiceMode}
           onToggleTranscription={toggleTranscription}
           LAYOUT_BOTTOM_SPACING={LAYOUT_BOTTOM_SPACING}

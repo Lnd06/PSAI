@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Loader2, Mic, Send } from 'lucide-react';
+import { Loader2, Mic, Send, Square } from 'lucide-react';
 
 interface ChatInputProps {
   inputMsg: string;
@@ -74,30 +74,45 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           </div>
         )}
 
+        {/* Indicador de Gravação de Áudio (Modo Áudio / Transcrição com resposta por voz) */}
+        {isTranscribing && (
+          <div className="flex items-center gap-2 px-3 py-1.5 mb-2 rounded-xl bg-red-500/10 border border-red-500/20 text-[10px] uppercase tracking-wider font-bold text-red-400 w-fit font-sans animate-fade-in select-none">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+            </span>
+            <span>Gravando áudio... Fale agora. Pressione parar ou enviar para a IA responder por voz.</span>
+          </div>
+        )}
+
         <div className="flex items-end gap-1.5 sm:gap-2 bg-brand-card border border-brand-border rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 focus-within:border-brand-gold/50 shadow-sm transition-colors">
           <textarea
             ref={textareaRef}
             value={inputMsg}
             onChange={(e) => setInputMsg(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Mensagem ao PSAI…"
+            placeholder={isTranscribing ? "Gravando áudio... Fale agora…" : "Mensagem ao PSAI…"}
             rows={1}
             className="flex-1 bg-transparent text-sm text-brand-text placeholder:text-brand-textMuted/60 resize-none focus:outline-none leading-relaxed max-h-40"
             style={{ overflowY: 'auto' }}
           />
           <div className="flex items-center gap-1 sm:gap-1.5 pb-0.5 select-none">
-            {/* Botão de Transcrição (Microfone / Speech to Text) */}
+            {/* Botão de Modo Áudio (Gravar áudio com resposta por voz) */}
             <button
               type="button"
               onClick={onToggleTranscription}
               className={`p-1.5 transition-all rounded-lg relative border cursor-pointer ${
                 isTranscribing
-                  ? 'bg-brand-gold/15 text-brand-gold border-brand-gold/30 shadow-[0_0_12px_rgba(74, 114, 101, 0.15)] animate-pulse'
+                  ? 'bg-red-500/15 text-red-400 border-red-500/30 shadow-[0_0_12px_rgba(239,68,68,0.25)] animate-pulse'
                   : 'text-brand-textMuted hover:text-brand-gold hover:bg-brand-bg/50 border-transparent'
               }`}
-              title={isTranscribing ? 'Parar transcrição de fala' : 'Transcrição de fala (Microfone)'}
+              title={isTranscribing ? 'Parar e enviar mensagem de áudio' : 'Gravar áudio para a IA (Modo Áudio - resposta por voz)'}
             >
-              <Mic size={16} className="sm:w-[17px] sm:h-[17px]" />
+              {isTranscribing ? (
+                <Square size={14} className="sm:w-4 sm:h-4 fill-current text-red-400" />
+              ) : (
+                <Mic size={16} className="sm:w-[17px] sm:h-[17px]" />
+              )}
             </button>
 
             {/* Botão de Conversa por Voz Interativa */}
@@ -135,7 +150,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   ? 'bg-brand-gold text-brand-bg hover:bg-brand-goldHover shadow shadow-brand-gold/15 active:scale-95 cursor-pointer'
                   : 'bg-transparent text-brand-textMuted/40 cursor-not-allowed'
               }`}
-              title="Enviar mensagem"
+              title={isTranscribing ? 'Enviar áudio transcrito (IA responderá por voz)' : 'Enviar mensagem'}
             >
               <Send size={12} fill="currentColor" className="sm:w-3.5 sm:h-3.5" />
             </button>
