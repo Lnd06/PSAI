@@ -9,7 +9,7 @@ O sistema funciona como um monorepo que integra um frontend dinâmico em **React
 ## Visualização do Projeto
 
 O projeto está disponível para visualização e testes online através do seguinte link:
-👉 **[PSAI - Web Application](https://psai-frontend-794942769529.us-central1.run.app/)**
+👉 **[PSAI - Web Application](https://psai-alpha.vercel.app/)**
 
 ---
 
