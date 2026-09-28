@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Brain, Sparkles, Loader2 } from 'lucide-react';
 
@@ -12,6 +12,79 @@ export interface Message {
   audioBase64?: string;
 }
 
+interface TypewriterTextProps {
+  content: string;
+  isAnimating: boolean;
+  onComplete?: () => void;
+  onScroll?: () => void;
+}
+
+const TypewriterText: React.FC<TypewriterTextProps> = ({
+  content,
+  isAnimating,
+  onComplete,
+  onScroll,
+}) => {
+  const [displayedLength, setDisplayedLength] = useState(() => (isAnimating ? 0 : content.length));
+
+  useEffect(() => {
+    if (!isAnimating) {
+      setDisplayedLength(content.length);
+      return;
+    }
+
+    setDisplayedLength(0);
+    let current = 0;
+    const total = content.length;
+
+    // Velocidade de digitação fluida e natural (ajustada para não demorar demais)
+    const step = total > 400 ? 2 : 1;
+    const intervalMs = 18;
+
+    const timer = setInterval(() => {
+      current = Math.min(current + step, total);
+      setDisplayedLength(current);
+
+      if (current % (step * 8) === 0 || current >= total) {
+        onScroll?.();
+      }
+
+      if (current >= total) {
+        clearInterval(timer);
+        onComplete?.();
+      }
+    }, intervalMs);
+
+    return () => clearInterval(timer);
+  }, [content, isAnimating]);
+
+  const handleSkip = () => {
+    if (isAnimating && displayedLength < content.length) {
+      setDisplayedLength(content.length);
+      onComplete?.();
+      onScroll?.();
+    }
+  };
+
+  const isTyping = isAnimating && displayedLength < content.length;
+
+  return (
+    <p
+      onClick={handleSkip}
+      className={`text-base text-brand-text leading-[1.75] font-light font-serif whitespace-pre-wrap text-left select-text break-words ${
+        isTyping ? 'cursor-pointer' : ''
+      }`}
+      style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+      title={isTyping ? 'Clique para exibir todo o texto imediatamente' : undefined}
+    >
+      {isAnimating ? content.slice(0, displayedLength) : content}
+      {isTyping && (
+        <span className="inline-block w-1.5 h-4 ml-1 bg-brand-gold/80 rounded-sm animate-pulse align-middle" />
+      )}
+    </p>
+  );
+};
+
 interface ChatHistoryProps {
   messages: Message[];
   loading: boolean;
@@ -22,6 +95,8 @@ interface ChatHistoryProps {
   getAiTherapeuticLabel: (mood: string) => string;
   onSendQuickPrompt: (prompt: string) => void;
   messageEndRef: React.RefObject<HTMLDivElement | null>;
+  animatingMessageId?: string | null;
+  onAnimationComplete?: (id?: string) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -41,6 +116,8 @@ export const ChatHistory = forwardRef<HTMLDivElement, ChatHistoryProps>(({
   getAiTherapeuticLabel,
   onSendQuickPrompt,
   messageEndRef,
+  animatingMessageId,
+  onAnimationComplete,
 }, ref) => {
   return (
     <div ref={ref} className="flex-1 overflow-y-auto px-4 md:px-8 py-6 z-10">
@@ -97,13 +174,13 @@ export const ChatHistory = forwardRef<HTMLDivElement, ChatHistoryProps>(({
                       {msg.content}
                     </div>
                   ) : (
-                    /* PSAI message text */
-                    <p
-                      className="text-base text-brand-text leading-[1.75] font-light font-serif whitespace-pre-wrap text-left select-text break-words"
-                      style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-                    >
-                      {msg.content}
-                    </p>
+                    /* PSAI message text com Efeito Máquina de Escrever / Digitação */
+                    <TypewriterText
+                      content={msg.content}
+                      isAnimating={animatingMessageId === msg.id}
+                      onComplete={() => onAnimationComplete?.(msg.id)}
+                      onScroll={() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                    />
                   )}
                 </div>
               </motion.div>

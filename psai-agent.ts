@@ -317,7 +317,7 @@ async function callGemini(prompt: string): Promise<string> {
 
   const result = await model.generateContent({
     contents: [{ role: 'user', parts: [{ text: fullPrompt }] }],
-    generationConfig: { temperature: 0.7, maxOutputTokens: 400 }
+    generationConfig: { temperature: 0.7, maxOutputTokens: 1500 }
   });
 
   return result.response.text();

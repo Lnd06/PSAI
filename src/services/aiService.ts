@@ -103,7 +103,7 @@ async function callOpenRouter(
   const data = await postOpenRouterWithFallback(apiKey, model, {
     messages,
     temperature: 0.7,
-    max_tokens: 500
+    max_tokens: 1500
   });
 
   return data.choices?.[0]?.message?.content || '';

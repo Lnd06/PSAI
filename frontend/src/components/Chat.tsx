@@ -53,6 +53,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
   const [error, setError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= 768);
   const [creatingSession, setCreatingSession] = useState(false);
+  const [animatingMessageId, setAnimatingMessageId] = useState<string | null>(null);
 
   const [userName, setUserName] = useState('Visitante');
   const [subscriptionPlan, setSubscriptionPlan] = useState('trial');
@@ -411,6 +412,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
   const isInitialLoadRef = useRef(true);
 
   useEffect(() => {
+    setAnimatingMessageId(null);
     if (sessionId) {
       isInitialLoadRef.current = true;
       fetchSessionDetails();
@@ -499,6 +501,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
           };
         });
       }
+      setAnimatingMessageId(aiMessage.id);
       fetchSidebarSessions();
 
       if (shouldRespondWithVoice) {
@@ -786,6 +789,8 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
           getAiTherapeuticLabel={getAiTherapeuticLabel}
           onSendQuickPrompt={handleSendMessage}
           messageEndRef={messageEndRef}
+          animatingMessageId={animatingMessageId}
+          onAnimationComplete={() => setAnimatingMessageId(null)}
         />
 
         <ChatInput
