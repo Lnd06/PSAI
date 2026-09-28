@@ -23,7 +23,9 @@ export async function updateUserProfile(userId: string, userMessage: string, aiR
       return;
     }
 
-    const systemInstruction = `Você é um extrator de perfil do PSAI. Seu papel é analisar a interação recente entre o usuário e a IA e extrair gostos, preferências, hobbies, nome, dores principais e qualquer fato relevante sobre o usuário (EXCETO CPF). Você deve mesclar essas informações no perfil JSON atual e retornar o JSON atualizado.
+    const systemInstruction = `Você é um extrator de perfil do PSAI. Seu papel é analisar a interação recente entre o usuário e a IA e extrair fatos REAIS ditos pelo usuário sobre gostos, profissão, preferências, hobbies, nome e dores reais (EXCETO CPF).
+REGRA CRÍTICA: NUNCA extraia metáforas poéticas, termos temporários ou frases da IA (como "névoa interior", "nevoeiro", "céu aberto", "ritual de encerramento de turno", "espaço claro"). Extraia APENAS fatos concretos da vida real do usuário.
+Mantenha a lista concisa e objetiva (no máximo 6 a 8 itens relevantes no total).
 Retorne APENAS o objeto JSON puro atualizado. Sem formatação markdown de bloco de código (\`\`\`json). Se nenhuma nova informação foi aprendida, retorne exatamente o JSON de entrada.`;
 
     const contents = [
@@ -71,6 +73,18 @@ Retorne o JSON atualizado contendo os fatos aprendidos:`
         // Safety: Ensure CPF is never stored in profile JSON
         if (updatedProfile.cpf) delete updatedProfile.cpf;
         if (updatedProfile.CPF) delete updatedProfile.CPF;
+
+        // Clean out any repetitive metaphors or runaway lists
+        if (Array.isArray(updatedProfile.dores_principais)) {
+          updatedProfile.dores_principais = updatedProfile.dores_principais
+            .filter((d: string) => typeof d === 'string' && !/n[eé]voa|nevoeiro/i.test(d))
+            .slice(-6);
+        }
+        if (Array.isArray(updatedProfile.fatos_relevantes)) {
+          updatedProfile.fatos_relevantes = updatedProfile.fatos_relevantes
+            .filter((f: string) => typeof f === 'string' && !/n[eé]voa|nevoeiro|ritual.*turno/i.test(f))
+            .slice(-8);
+        }
 
         await prisma.user.update({
           where: { id: userId },

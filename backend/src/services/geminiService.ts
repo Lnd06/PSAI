@@ -54,6 +54,13 @@ Você combina a escuta ativa empática e a validação incondicional da Abordage
    - Quem está com dor, ansiedade ou sobrecarga procura alívio, presença e acolhimento humano — uma aula de biologia ou neurociência gera cansaço mental, destrói a empatia e soa pedante ou professoral.
    - Comunicação Branda e Aconchegante: Dê apenas uma explicação simples, suave e intuitiva (ex: "Isso vai ajudar seu corpo a desacelerar e trazer uma sensação gostosa de calma agora").
    - Regra da Curiosidade do Paciente: Se, e SOMENTE SE, o paciente demonstrar curiosidade e perguntar explicitamente o motivo ou a base científica (ex: "Por que essa respiração funciona?", "O que isso faz no cérebro?", "Qual a ciência por trás disso?"), aí sim você explica os mecanismos, e mesmo assim em tom leve, claro e sem complicações.
+
+8. Proibição Absoluta de Metáforas Repetitivas e Chavões (Regra Anti-Eco):
+   - PROIBIÇÃO TOTAL DE METÁFORAS DE "NÉVOA" OU "NEVOEIRO": NUNCA use termos como "névoa interior", "a névoa começou a se dissipar", "névoa mental", "nevoeiro", "espaço mais claro", "céu aberto"! Essa metáfora está terminantemente PROIBIDA. Não a mencione em hipótese alguma.
+   - PROIBIDO REPETIR O MESMO EXERCÍCIO OU RITUAL EM MENSAGENS SEGUIDAS: Não repita scripts de "ao final de cada turno reserve dois/três minutos para fechar os olhos e registrar em uma frase curta" ou "pequeno ritual de encerramento". Varie as intervenções e o repertório.
+   - Variedade Linguística e Presença Viva: Fale de forma fresca, variada, natural e presente, reagindo DIRETAMENTE ao que o paciente acabou de dizer. Nunca soe como uma gravação pré-programada.
+   - Quando o paciente estiver feliz ou expressar alívio: Comemore de forma genuína, leve e afetuosa (ex: "Que notícia maravilhosa!", "Fico muito feliz de verdade em ouvir isso"), sem tentar inventar problemas ou impor exercícios desnecessários.
+   - Quando o paciente pedir para continuar conversando ("quero conversar mais um pouco"): Abra espaço com acolhimento e curiosidade leve, convidando-o a trazer o que quiser (ex: "Estou aqui com você com todo o tempo do mundo! O que está passando pela sua mente agora?", "Tem mais alguma situação do seu dia ou outro assunto que queira conversar?").
 `;
 
 export interface ChatMessageContext {
@@ -186,6 +193,8 @@ async function generateGroqContent(
           messages,
           temperature: isJson ? 0.1 : 0.7,
           max_tokens: 2048,
+          frequency_penalty: isJson ? 0 : 0.6,
+          presence_penalty: isJson ? 0 : 0.5,
           response_format: isJson ? { type: 'json_object' } : undefined
         })
       });
@@ -233,9 +242,11 @@ export async function generateTherapeuticResponse(
     if (userProfile.profileJson) {
       try {
         const parsed = JSON.parse(userProfile.profileJson);
-        instruction += `- Gostos, Histórico & Preferências Aprendidos: ${JSON.stringify(parsed)}\n`;
+        const cleanJsonStr = JSON.stringify(parsed).replace(/n[eé]voa\s*(interior|mental|cognitiva)?/gi, 'sobrecarga');
+        instruction += `- Gostos, Histórico & Preferências Aprendidos: ${cleanJsonStr}\n`;
       } catch (e) {
-        instruction += `- Gostos, Histórico & Preferências Aprendidos: ${userProfile.profileJson}\n`;
+        const cleanStr = userProfile.profileJson.replace(/n[eé]voa\s*(interior|mental|cognitiva)?/gi, 'sobrecarga');
+        instruction += `- Gostos, Histórico & Preferências Aprendidos: ${cleanStr}\n`;
       }
     }
     instruction += `(Importante: Chame o paciente pelo nome dele de forma natural e empática nas saudações e acolhimentos. Considere seus gostos, preferências e histórico ao formular as orientações e reflexões, adaptando as sessões à realidade dele de forma orgânica. Nunca mencione CPF, dados confidenciais ou a existência deste JSON explicitamente).\n`;
@@ -243,7 +254,8 @@ export async function generateTherapeuticResponse(
 
   // Suppress past memories if the message is a simple greeting
   if (!isSimpleGreeting && pastMemories && pastMemories.trim().length > 0) {
-    instruction += `\n### Memórias Recuperadas de Sessões Anteriores (RAG via MySQL):\n${pastMemories}\n`;
+    const cleanMemories = pastMemories.replace(/n[eé]voa\s*(interior|mental|cognitiva)?/gi, 'sobrecarga');
+    instruction += `\n### Memórias Recuperadas de Sessões Anteriores (RAG via MySQL):\n${cleanMemories}\n`;
   }
 
   if (libraryContext && libraryContext.trim().length > 0) {
@@ -254,8 +266,8 @@ export async function generateTherapeuticResponse(
   // Suppress summary contextual memory if the message is a simple greeting
   if (!isSimpleGreeting && (summaryShort || summaryLong)) {
     systemPrompt += `### Memória Contextual das Conversas Anteriores:\n`;
-    if (summaryShort) systemPrompt += `- Resumo Curto: ${summaryShort}\n`;
-    if (summaryLong) systemPrompt += `- Histórico de Longo Prazo: ${summaryLong}\n`;
+    if (summaryShort) systemPrompt += `- Resumo Curto: ${summaryShort.replace(/n[eé]voa\s*(interior|mental|cognitiva)?/gi, 'sobrecarga')}\n`;
+    if (summaryLong) systemPrompt += `- Histórico de Longo Prazo: ${summaryLong.replace(/n[eé]voa\s*(interior|mental|cognitiva)?/gi, 'sobrecarga')}\n`;
     systemPrompt += `\n`;
   }
 
