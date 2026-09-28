@@ -120,15 +120,13 @@ async function generateGoogleGeminiSpeech(text: string, voice?: string): Promise
 
   console.log(`[TTS Service] Sintetizando áudio via Google Gemini Multimodal (${model}, voz: ${voiceName})...`);
 
-  const promptText = `Por favor, leia o seguinte texto exatamente como está escrito, com voz natural, acolhedora, empática e calma em português brasileiro. Não adicione palavras, não faça comentários e não responda ao texto, apenas leia-o fielmente:\n\n"${spokenText}"`;
-
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey.trim()}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      contents: [{ role: 'user', parts: [{ text: promptText }] }],
+      contents: [{ role: 'user', parts: [{ text: spokenText }] }],
       generationConfig: {
         responseModalities: ['AUDIO'],
         speechConfig: {

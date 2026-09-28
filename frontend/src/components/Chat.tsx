@@ -76,6 +76,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
   const recognitionRef = useRef<any>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isVoiceMessage, setIsVoiceMessage] = useState(false);
   const transcriptionRecognitionRef = useRef<any>(null);
   const isVoiceMessageRef = useRef<boolean>(false);
   const latestAudioTranscriptRef = useRef<string>('');
@@ -196,6 +197,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     rec.onstart = () => {
       setIsTranscribing(true);
       isVoiceMessageRef.current = true;
+      setIsVoiceMessage(true);
     };
 
     rec.onresult = (event: any) => {
@@ -215,6 +217,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
         setInputMsg(fullText);
         latestAudioTranscriptRef.current = fullText;
         isVoiceMessageRef.current = true;
+        setIsVoiceMessage(true);
       }
     };
 
@@ -232,6 +235,7 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
     rec.onend = () => {
       setIsTranscribing(false);
+      // Mantém isVoiceMessageRef ativo porque o texto gerado veio do microfone!
     };
 
     transcriptionRecognitionRef.current = rec;
@@ -260,8 +264,11 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
   const toggleTranscription = () => {
     if (isTranscribing) {
-      // User pressed Stop button on microphone: stop and automatically send with voice response
+      // Usuário clicou no botão Parar do microfone enquanto gravava: para e envia com resposta por voz
       stopTranscription(true);
+    } else if (isVoiceMessage && inputMsg.trim()) {
+      // Usuário já gravou áudio e clica no microfone novamente: envia com resposta por voz
+      handleSendMessage(inputMsg, true);
     } else {
       startTranscription();
     }
@@ -443,11 +450,12 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     const messageText = (typeof textToSend === 'string' ? textToSend : inputMsg).trim();
     if (!messageText || sending) return;
 
-    // Responds by voice if recorded by mic/audio mode, if voice conversation mode is on, or if forceVoiceResponse is true
-    const shouldRespondWithVoice = voiceModeActiveRef.current || isVoiceMessageRef.current || forceVoiceResponse === true;
+    // Responde por voz se veio do microfone (Modo Áudio), do modo de conversa contínuo ou forceVoiceResponse
+    const shouldRespondWithVoice = voiceModeActiveRef.current || isVoiceMessageRef.current || isVoiceMessage || forceVoiceResponse === true;
 
-    // Reset voice message flag for future typed messages
+    // Reseta flags de áudio para futuras mensagens
     isVoiceMessageRef.current = false;
+    setIsVoiceMessage(false);
     latestAudioTranscriptRef.current = '';
 
     setInputMsg('');
@@ -782,17 +790,19 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
         <ChatInput
           inputMsg={inputMsg}
-          setInputMsg={(val) => {
+          setInputMsg={setInputMsg}
+          isVoiceMessage={isVoiceMessage}
+          onUserType={(val) => {
             setInputMsg(val);
-            if (!isTranscribing) {
-              isVoiceMessageRef.current = false;
-            }
+            isVoiceMessageRef.current = false;
+            setIsVoiceMessage(false);
+            latestAudioTranscriptRef.current = '';
           }}
           sending={sending}
           voiceModeActive={voiceModeActive}
           isSpeaking={isSpeaking}
           isTranscribing={isTranscribing}
-          onSendMessage={() => handleSendMessage(inputMsg, isVoiceMessageRef.current || isTranscribing)}
+          onSendMessage={() => handleSendMessage(inputMsg, isVoiceMessage || isVoiceMessageRef.current || isTranscribing)}
           onToggleVoiceMode={toggleVoiceMode}
           onToggleTranscription={toggleTranscription}
           LAYOUT_BOTTOM_SPACING={LAYOUT_BOTTOM_SPACING}
