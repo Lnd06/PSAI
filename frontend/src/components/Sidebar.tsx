@@ -91,7 +91,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   key={s.id}
                   onClick={() => navigate(`/chat/${s.id}`)}
-                  className={`w-full text-left px-3.5 py-4 rounded-xl text-sm transition-colors group relative overflow-hidden ${
+                  className={`w-full text-left px-3.5 py-3 rounded-xl text-sm transition-colors group relative overflow-hidden flex items-center ${
                     isCurrent
                       ? 'text-brand-text font-semibold bg-brand-gold/10'
                       : 'text-brand-textMuted hover:bg-brand-bg hover:text-brand-text'
@@ -104,11 +104,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       transition={{ type: 'spring', stiffness: 350, damping: 28 }}
                     />
                   )}
-                  <div className="relative z-10 flex flex-col gap-1.5">
+                  <div className="relative z-10 w-full min-w-0">
                     <p className="truncate font-medium leading-snug">{s.title || 'Diário de Reflexão'}</p>
-                    <p className="text-[11px] text-brand-textMuted/70 font-light">
-                      {new Date(s.updatedAt).toLocaleDateString('pt-BR')}
-                    </p>
                   </div>
                 </button>
               );
