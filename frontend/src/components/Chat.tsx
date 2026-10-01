@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { HelpCircle, Menu, Brain, ChevronLeft, PenSquare } from 'lucide-react';
+import { HelpCircle, Menu, Brain, ChevronLeft, PenSquare, ArrowDown } from 'lucide-react';
 import { CrisisModal } from './CrisisBanner';
 import { Sidebar } from './Sidebar';
 import type { SidebarSession } from './Sidebar';
@@ -65,6 +65,9 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
   const messageEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
+  const touchStartYRef = useRef(0);
 
   // Voice states and refs
   const [voiceModeActive, setVoiceModeActive] = useState(false);
@@ -420,7 +423,48 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     }
   }, [sessionId, token]);
 
-  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+  const handleContainerScroll = () => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // Se a distância do fundo for maior que 80px, o usuário rolou para cima
+    const isUp = distanceFromBottom > 80;
+    if (userScrolledUpRef.current !== isUp) {
+      userScrolledUpRef.current = isUp;
+      setIsUserScrolledUp(isUp);
+    }
+  };
+
+  const handleContainerWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) {
+      // Movimento intencional para cima com o mouse ou trackpad
+      userScrolledUpRef.current = true;
+      setIsUserScrolledUp(true);
+    }
+  };
+
+  const handleContainerTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length > 0) {
+      touchStartYRef.current = e.touches[0].clientY;
+    }
+  };
+
+  const handleContainerTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length > 0) {
+      const currentY = e.touches[0].clientY;
+      // Arrastar para baixo move a lista para mensagens anteriores
+      if (currentY - touchStartYRef.current > 8) {
+        userScrolledUpRef.current = true;
+        setIsUserScrolledUp(true);
+      }
+    }
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth', force: boolean = false) => {
+    // Não força a rolagem para baixo se o usuário tiver rolado para ler mensagens anteriores
+    if (!force && userScrolledUpRef.current) {
+      return;
+    }
     if (messagesContainerRef.current) {
       messagesContainerRef.current.scrollTo({
         top: messagesContainerRef.current.scrollHeight,
@@ -429,12 +473,27 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     }
   };
 
+  const handleAutoScrollFromTypewriter = () => {
+    // Se o usuário rolou para cima, não sequestra o scroll dele!
+    if (userScrolledUpRef.current) return;
+    if (messagesContainerRef.current) {
+      // Uso direto de scrollTop que é instantâneo e não trava o scroll suave do navegador
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  };
+
+  const handleJumpToRecent = () => {
+    userScrolledUpRef.current = false;
+    setIsUserScrolledUp(false);
+    scrollToBottom('smooth', true);
+  };
+
   useEffect(() => {
     if (session?.messages) {
       if (isInitialLoadRef.current && !loading) {
-        scrollToBottom('auto');
+        scrollToBottom('auto', true);
         isInitialLoadRef.current = false;
-      } else {
+      } else if (!userScrolledUpRef.current) {
         scrollToBottom('smooth');
       }
     }
@@ -463,6 +522,11 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     setInputMsg('');
     setSending(true);
     setError('');
+
+    // Reseta estado de scroll para garantir que a nova mensagem do próprio usuário apareça
+    userScrolledUpRef.current = false;
+    setIsUserScrolledUp(false);
+    scrollToBottom('smooth', true);
 
     const temporaryUserMsg: Message = {
       id: `temp-${Date.now()}`,
@@ -791,7 +855,25 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
           messageEndRef={messageEndRef}
           animatingMessageId={animatingMessageId}
           onAnimationComplete={() => setAnimatingMessageId(null)}
+          onAutoScroll={handleAutoScrollFromTypewriter}
+          onScroll={handleContainerScroll}
+          onWheel={handleContainerWheel}
+          onTouchStart={handleContainerTouchStart}
+          onTouchMove={handleContainerTouchMove}
         />
+
+        {/* Botão flutuante: Rolar para mensagens recentes */}
+        {isUserScrolledUp && (
+          <div className="flex justify-center -mb-2 z-20 select-none animate-fade-in">
+            <button
+              onClick={handleJumpToRecent}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-brand-card/95 border border-brand-gold/40 text-brand-gold hover:text-brand-text hover:border-brand-gold hover:bg-brand-card shadow-lg text-xs font-sans backdrop-blur-md cursor-pointer transition-all duration-200 hover:scale-105 active:scale-95"
+            >
+              <ArrowDown size={13} className="animate-bounce" />
+              <span>Ir para mensagens recentes</span>
+            </button>
+          </div>
+        )}
 
         <ChatInput
           inputMsg={inputMsg}

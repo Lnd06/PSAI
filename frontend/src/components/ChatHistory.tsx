@@ -37,15 +37,15 @@ const TypewriterText: React.FC<TypewriterTextProps> = ({
     let current = 0;
     const total = content.length;
 
-    // Velocidade de digitação fluida e natural (ajustada para não demorar demais)
-    const step = total > 400 ? 2 : 1;
-    const intervalMs = 18;
+    // Velocidade de digitação fluida, dinâmica e natural
+    const step = total > 800 ? 4 : total > 400 ? 3 : total > 150 ? 2 : 1;
+    const intervalMs = 14;
 
     const timer = setInterval(() => {
       current = Math.min(current + step, total);
       setDisplayedLength(current);
 
-      if (current % (step * 8) === 0 || current >= total) {
+      if (current % (step * 6) === 0 || current >= total) {
         onScroll?.();
       }
 
@@ -97,6 +97,11 @@ interface ChatHistoryProps {
   messageEndRef: React.RefObject<HTMLDivElement | null>;
   animatingMessageId?: string | null;
   onAnimationComplete?: (id?: string) => void;
+  onAutoScroll?: () => void;
+  onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
+  onWheel?: (e: React.WheelEvent<HTMLDivElement>) => void;
+  onTouchStart?: (e: React.TouchEvent<HTMLDivElement>) => void;
+  onTouchMove?: (e: React.TouchEvent<HTMLDivElement>) => void;
 }
 
 const QUICK_PROMPTS = [
@@ -118,9 +123,22 @@ export const ChatHistory = forwardRef<HTMLDivElement, ChatHistoryProps>(({
   messageEndRef,
   animatingMessageId,
   onAnimationComplete,
+  onAutoScroll,
+  onScroll,
+  onWheel,
+  onTouchStart,
+  onTouchMove,
 }, ref) => {
   return (
-    <div ref={ref} className="flex-1 overflow-y-auto px-4 md:px-8 py-6 z-10">
+    <div
+      ref={ref}
+      onScroll={onScroll}
+      onWheel={onWheel}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      className="flex-1 overflow-y-auto px-4 md:px-8 py-6 z-10 overscroll-contain"
+      style={{ WebkitOverflowScrolling: 'touch' }}
+    >
       {loading ? (
         <div className="flex flex-col items-center justify-center h-full text-neutral-500 gap-3">
           <Loader2 className="animate-spin text-brand-gold" size={28} />
@@ -179,7 +197,7 @@ export const ChatHistory = forwardRef<HTMLDivElement, ChatHistoryProps>(({
                       content={msg.content}
                       isAnimating={animatingMessageId === msg.id}
                       onComplete={() => onAnimationComplete?.(msg.id)}
-                      onScroll={() => messageEndRef.current?.scrollIntoView({ behavior: 'smooth' })}
+                      onScroll={onAutoScroll}
                     />
                   )}
                 </div>
