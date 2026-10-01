@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthenticatedRequest } from './auth';
 import { createCustomer, createSubscription } from '../services/asaasService';
@@ -205,14 +206,26 @@ router.post('/cancel_subscription', authenticateToken, async (req: Authenticated
 
 /**
  * POST /api/payments/webhook
- * Recebe notificações de eventos de pagamento e atualiza status no banco local
+ * Recebe notificações de eventos de pagamento e atualiza status no banco local com verificação rigorosa de token
  */
 router.post('/webhook', async (req, res) => {
   const { event, payment } = req.body;
   const asaasToken = req.headers['asaas-access-token'];
+  const configuredWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
 
-  if (process.env.ASAAS_WEBHOOK_TOKEN && asaasToken !== process.env.ASAAS_WEBHOOK_TOKEN) {
-    console.warn('⚠️ Tentativa de Webhook com token inválido recusada.');
+  // Security: If ASAAS_WEBHOOK_TOKEN is not configured on the server, reject all external webhook triggers to prevent forge attacks
+  if (!configuredWebhookToken || configuredWebhookToken.trim().length === 0) {
+    console.error('🚨 [Security Alert] ASAAS_WEBHOOK_TOKEN não está configurado no servidor. Webhook bloqueado por segurança.');
+    return res.status(503).json({ error: 'Webhook não configurado no servidor' });
+  }
+
+  // Security: Constant-time token verification to prevent timing attacks
+  const receivedTokenStr = typeof asaasToken === 'string' ? asaasToken : '';
+  const tokenMatches = receivedTokenStr.length === configuredWebhookToken.length &&
+    crypto.timingSafeEqual(Buffer.from(receivedTokenStr), Buffer.from(configuredWebhookToken));
+
+  if (!tokenMatches) {
+    console.warn('⚠️ [Security Alert] Tentativa de chamada ao Webhook com token inválido recusada.');
     return res.status(401).json({ error: 'Unauthorized' });
   }
 

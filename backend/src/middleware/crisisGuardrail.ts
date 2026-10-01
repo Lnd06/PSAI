@@ -4,18 +4,25 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const CRISIS_PATTERNS = [
-  /\bquero\s+(me\s+)?(matar|suicidar|cortar|machucar)\b/i,
-  /\bpensando\s+em\s+(me\s+)?(matar|suicidar|cortar|machucar)\b/i,
+  /\bquero\s+(me\s+)?(matar|suicidar|cortar|machucar|enforcar)\b/i,
+  /\bpensando\s+em\s+(me\s+)?(matar|suicidar|cortar|machucar|enforcar)\b/i,
   /\bquero\s+morrer\b/i,
   /\bpensando\s+em\s+morrer\b/i,
   /\btirar\s+(a\s+)?minha\s+vida\b/i,
+  /\bacabar\s+com\s+(a\s+)?minha\s+vida\b/i,
   /\b(não|nao)\s+quero\s+mais\s+(viver|existir)\b/i,
-  /\b(dar\s+fim\s+a\s+tudo|desistir\s+de\s+viver)\b/i,
-  /\bsuic[íi]dio\b/i,
+  /\b(não|nao)\s+(aguento|suporto)\s+mais\s+(viver|a\s+vida)\b/i,
+  /\b(dar\s+(um\s+)?fim\s+(a|à|na|na\s+minha)\s+(vida|tudo)|desistir\s+de\s+viver)\b/i,
+  /\bsuic[íi]d(io|ar|ando|ou)\b/i,
   /\bauto(-)?mutila[çc][ãa]o\b/i,
   /\bme\s+auto\s*mutilar\b/i,
-  /\bi\s+want\s+to\s+(die|kill\s+myself|hurt\s+myself|suicide)\b/i,
-  /\bthought\s+of\s+suicide\b/i
+  /\b(cortar|abrir)\s+(os\s+)?(meus\s+)?pulsos\b/i,
+  /\b(tomar|beber|ingerir)\s+(veneno|chumbinho|remédios?|remedios?)\s+(para\s+morrer|pra\s+morrer)\b/i,
+  /\boverdose\s+intencional\b/i,
+  /\bme\s+jogar\s+(da\s+janela|da\s+ponte|no\s+tr[eê]m|na\s+frente)\b/i,
+  /\bi\s+want\s+to\s+(die|kill\s+myself|hurt\s+myself|commit\s+suicide)\b/i,
+  /\b(thought\s+of|thinking\s+about)\s+suicide\b/i,
+  /\b(end|take)\s+my\s+own\s+life\b/i
 ];
 
 export interface CrisisEmergencyPayload {

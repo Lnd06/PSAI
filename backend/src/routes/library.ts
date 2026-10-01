@@ -23,11 +23,32 @@ router.get('/', authenticateToken, async (req: AuthenticatedRequest, res: Respon
 });
 
 /**
+ * Helper to verify administrative privileges for library management
+ */
+function isAuthorizedAdmin(req: AuthenticatedRequest): boolean {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminKey = process.env.ADMIN_KEY;
+  const reqAdminKey = req.headers['x-admin-key'];
+
+  if (adminKey && reqAdminKey === adminKey) return true;
+  if (adminEmail && req.user?.email && req.user.email.toLowerCase() === adminEmail.toLowerCase().trim()) return true;
+  // In development without configured admin vars, allow local administrator
+  if (!adminEmail && !adminKey && process.env.NODE_ENV !== 'production') return true;
+  return false;
+}
+
+/**
  * POST /api/library
  * Create a book in MySQL, split text, embed, and upload chunks to Pinecone
  */
 router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!isAuthorizedAdmin(req)) {
+      return res.status(403).json({ 
+        message: 'Acesso negado. Apenas administradores do PSAI podem adicionar materiais à biblioteca científica.' 
+      });
+    }
+
     const { title, author, content } = req.body;
     
     if (!title || typeof title !== 'string' || title.trim().length === 0) {
@@ -80,6 +101,12 @@ router.post('/', authenticateToken, async (req: AuthenticatedRequest, res: Respo
  */
 router.delete('/:id', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
+    if (!isAuthorizedAdmin(req)) {
+      return res.status(403).json({ 
+        message: 'Acesso negado. Apenas administradores podem remover materiais da biblioteca.' 
+      });
+    }
+
     const { id } = req.params;
     
     // Find book to get content for ID matching

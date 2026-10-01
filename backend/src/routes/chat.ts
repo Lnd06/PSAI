@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthenticatedRequest } from './auth';
 import { crisisGuardrailMiddleware } from '../middleware/crisisGuardrail';
@@ -7,6 +8,15 @@ import { generateSpeech } from '../services/ttsService';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+// Rate limiter for AI chat message processing and TTS generation (prevents quota exhaustion & denial of wallet)
+const chatAiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 35, // 35 AI/TTS operations per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Limite de mensagens por minuto atingido. Respire fundo e tente novamente em alguns instantes.' }
+});
 
 /**
  * GET /api/chat
@@ -131,6 +141,7 @@ router.delete('/:sessionId', authenticateToken, async (req: AuthenticatedRequest
 router.post(
   '/:sessionId/message',
   authenticateToken,
+  chatAiLimiter,
   crisisGuardrailMiddleware, // Checks for self-harm/suicide terms before processing
   async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -140,6 +151,10 @@ router.post(
 
       if (!content || typeof content !== 'string' || content.trim().length === 0) {
         return res.status(400).json({ message: 'A mensagem não pode estar vazia' });
+      }
+
+      if (content.length > 5000) {
+        return res.status(400).json({ message: 'A mensagem excede o limite máximo permitido de 5000 caracteres.' });
       }
 
       const result = await processUserMessage(
@@ -157,8 +172,7 @@ router.post(
       }
       console.error('[Chat Message Error]:', error.stack || error.message || error);
       return res.status(500).json({ 
-        message: 'Erro interno ao processar mensagem',
-        error: error.message || 'Erro desconhecido'
+        message: 'Erro interno ao processar mensagem terapêutica.'
       });
     }
   }
@@ -168,7 +182,7 @@ router.post(
  * POST /api/chat/tts
  * Generates speech audio for a text response
  */
-router.post('/tts', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+router.post('/tts', authenticateToken, chatAiLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { text, voice, emotion } = req.body;
     if (!text || typeof text !== 'string' || text.trim().length === 0) {

@@ -9,16 +9,17 @@ const classifierScript = path.join(__dirname, 'classify_emotion.py');
  * Returns one of: "alegria", "tristeza", "surpresa", "medo", "desgosto", "raiva", or "Neutro" (fallback).
  */
 export async function classifyEmotion(text: string): Promise<string> {
-  if (!text || text.trim().length === 0) {
+  const sanitizedText = (text || '').trim().slice(0, 500).replace(/^[-]+/, '');
+  if (sanitizedText.length === 0) {
     return 'Neutro';
   }
 
   return new Promise((resolve) => {
-    // Spawn the python classify script
+    // Spawn the python classify script with sanitized bounded input
     const pyProcess = spawn(pythonPath, [
       classifierScript,
       '--classify',
-      text
+      sanitizedText
     ]);
 
     let stdoutData = '';

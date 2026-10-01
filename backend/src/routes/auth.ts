@@ -1,26 +1,47 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { PrismaClient } from '@prisma/client';
 
 const router = Router();
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'psai_secret_key_very_secure_12345_xyz';
 
-// Zod schemas for request validation
+// Security: Enforce JWT_SECRET configuration or use strong random ephemeral secret in dev
+let JWT_SECRET: string = process.env.JWT_SECRET || '';
+if (!JWT_SECRET || JWT_SECRET.trim().length === 0) {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET must be set in production!');
+  } else {
+    JWT_SECRET = crypto.randomBytes(32).toString('hex');
+    console.warn('⚠️ [Security] JWT_SECRET ausente em desenvolvimento. Gerado segredo randômico seguro temporário.');
+  }
+}
+
+// Security: Rate limiter for authentication, registration and password recovery (prevents brute-force)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // 20 attempts per 15 minutes
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Muitas tentativas nesta rota de autenticação. Por segurança, tente novamente em 15 minutos.' }
+});
+
+// Zod schemas for request validation with email normalization (lowercase & trim)
 const RegisterSchema = z.object({
-  name: z.string().min(2, 'O nome deve ter pelo menos 2 caracteres'),
-  email: z.string().email('E-mail inválido'),
-  password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres'),
-  securityQuestion1: z.string().min(3, 'Selecione ou digite a pergunta de segurança 1'),
-  securityAnswer1: z.string().min(1, 'A resposta 1 não pode ser vazia'),
-  securityQuestion2: z.string().min(3, 'Selecione ou digite a pergunta de segurança 2'),
-  securityAnswer2: z.string().min(1, 'A resposta 2 não pode ser vazia')
+  name: z.string().min(2, 'O nome deve ter pelo menos 2 caracteres').max(100),
+  email: z.string().email('E-mail inválido').transform((v) => v.trim().toLowerCase()),
+  password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres').max(128),
+  securityQuestion1: z.string().min(3, 'Selecione ou digite a pergunta de segurança 1').max(200),
+  securityAnswer1: z.string().min(1, 'A resposta 1 não pode ser vazia').max(100),
+  securityQuestion2: z.string().min(3, 'Selecione ou digite a pergunta de segurança 2').max(200),
+  securityAnswer2: z.string().min(1, 'A resposta 2 não pode ser vazia').max(100)
 });
 
 const LoginSchema = z.object({
-  email: z.string().email('E-mail inválido'),
+  email: z.string().email('E-mail inválido').transform((v) => v.trim().toLowerCase()),
   password: z.string().min(6, 'A senha deve ter pelo menos 6 caracteres')
 });
 
@@ -60,7 +81,7 @@ export function authenticateToken(req: AuthenticatedRequest, res: Response, next
 /**
  * POST /api/auth/register
  */
-router.post('/register', async (req: Request, res: Response) => {
+router.post('/register', authLimiter, async (req: Request, res: Response) => {
   try {
     const validatedData = RegisterSchema.parse(req.body);
 
@@ -82,7 +103,7 @@ router.post('/register', async (req: Request, res: Response) => {
     // Create user
     const user = await prisma.user.create({
       data: {
-        name: validatedData.name,
+        name: validatedData.name.trim(),
         email: validatedData.email,
         passwordHash,
         securityQuestion1: validatedData.securityQuestion1,
@@ -126,7 +147,7 @@ router.post('/register', async (req: Request, res: Response) => {
 /**
  * POST /api/auth/login
  */
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authLimiter, async (req: Request, res: Response) => {
   try {
     const validatedData = LoginSchema.parse(req.body);
 
@@ -188,7 +209,7 @@ router.post('/login', async (req: Request, res: Response) => {
  * POST /api/auth/login/verify-step
  * Validates security answer and logs in
  */
-router.post('/login/verify-step', async (req: Request, res: Response) => {
+router.post('/login/verify-step', authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password, securityAnswer } = req.body;
 
@@ -337,7 +358,7 @@ router.put('/profile', authenticateToken, async (req: AuthenticatedRequest, res:
  * POST /api/auth/recover-password/questions
  * Returns security questions for a given email if configured
  */
-router.post('/recover-password/questions', async (req: Request, res: Response) => {
+router.post('/recover-password/questions', authLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
     if (!email || typeof email !== 'string') {
@@ -372,7 +393,7 @@ router.post('/recover-password/questions', async (req: Request, res: Response) =
  * POST /api/auth/recover-password/verify
  * Verifies security answers and resets the password
  */
-router.post('/recover-password/verify', async (req: Request, res: Response) => {
+router.post('/recover-password/verify', authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, answer1, answer2, newPassword } = req.body;
 

@@ -237,8 +237,7 @@ export async function generateTherapeuticResponse(
   if (userProfile) {
     instruction += `\n### Informações de Identidade do Paciente:\n`;
     instruction += `- Nome do Paciente: ${userProfile.name}\n`;
-    instruction += `- E-mail do Paciente: ${userProfile.email}\n`;
-    if (userProfile.telefone) instruction += `- Telefone do Paciente: ${userProfile.telefone}\n`;
+    // Note: E-mail e telefone são intencionalmente omitidos do prompt do LLM por conformidade com LGPD/privacidade e prevenção de vazamento via prompt injection
     if (userProfile.profileJson) {
       try {
         const parsed = JSON.parse(userProfile.profileJson);
@@ -285,7 +284,35 @@ export async function generateTherapeuticResponse(
     }
   }
 
-  // 1. Try Groq ultra-fast LPU engine first (~1.2s response time)
+  // 1. If user supplied their own valid Gemini API Key, try it with priority
+  if (userApiKey && isValidGeminiKey(userApiKey)) {
+    try {
+      const userModel = (aiModel && aiModel.startsWith('gemini')) ? aiModel : DEFAULT_GEMINI_MODEL;
+      const contents = [];
+      for (const msg of messageHistory) {
+        contents.push({
+          role: msg.sender === 'user' ? 'user' : 'model',
+          parts: [{ text: msg.content }]
+        });
+      }
+      contents.push({
+        role: 'user',
+        parts: [{ text: latestMessage }]
+      });
+
+      return await generateGeminiContent(
+        userApiKey,
+        userModel,
+        systemPrompt,
+        contents,
+        false
+      );
+    } catch (userKeyErr: any) {
+      console.warn('[PSAI] Chave de API do usuário falhou, tentando fallback institucional...', userKeyErr.message || userKeyErr);
+    }
+  }
+
+  // 2. Try Groq ultra-fast LPU engine (~1.2s response time)
   const groqKey = process.env.GROQ_API_KEY;
   if (groqKey && groqKey.trim().length > 0) {
     try {
@@ -302,7 +329,7 @@ export async function generateTherapeuticResponse(
     }
   }
 
-  // 2. High-quality Gemini fallback
+  // 3. High-quality Gemini fallback with system key
   const geminiKey = process.env.GEMINI_API_KEY;
   if (isValidGeminiKey(geminiKey)) {
     try {
