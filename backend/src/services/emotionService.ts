@@ -15,6 +15,20 @@ export async function classifyEmotion(text: string): Promise<string> {
   }
 
   return new Promise((resolve) => {
+    let resolved = false;
+
+    // Defensive 4-second timeout to ensure the request never hangs if Python blocks
+    const timer = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        try {
+          pyProcess.kill();
+        } catch (_) {}
+        console.warn('[Emotion Service] Timeout: classification took > 4s, falling back to Neutro.');
+        resolve('Neutro');
+      }
+    }, 4000);
+
     // Spawn the python classify script with sanitized bounded input
     const pyProcess = spawn(pythonPath, [
       classifierScript,
@@ -34,6 +48,10 @@ export async function classifyEmotion(text: string): Promise<string> {
     });
 
     pyProcess.on('close', (code) => {
+      clearTimeout(timer);
+      if (resolved) return;
+      resolved = true;
+
       if (code !== 0) {
         console.error(`[Emotion Service] Classifier exited with code ${code}. Stderr: ${stderrData}`);
         return resolve('Neutro');
@@ -53,6 +71,9 @@ export async function classifyEmotion(text: string): Promise<string> {
     });
 
     pyProcess.on('error', (err) => {
+      clearTimeout(timer);
+      if (resolved) return;
+      resolved = true;
       console.error('[Emotion Service] Failed to spawn classifier process:', err);
       resolve('Neutro');
     });

@@ -32,6 +32,9 @@ RUN cp src/services/classify_emotion.py dist/services/
 COPY data ./data/
 COPY nltk_data ./nltk_data/
 
+# Copy the compiled frontend static assets for monolithic SPA serving
+COPY public ./public/
+
 # Expose port and configure environment
 EXPOSE 8080
 ENV PORT=8080

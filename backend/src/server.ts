@@ -68,12 +68,16 @@ app.use(cors({
     if (!requestOrigin) {
       return callback(null, true);
     }
-    // Check against allowed list or vercel preview domains
-    if (allowedOrigins.includes(requestOrigin) || /^https:\/\/[a-zA-Z0-9_-]+\.vercel\.app$/.test(requestOrigin)) {
+    // Check against allowed list or vercel preview/production domains
+    if (
+      allowedOrigins.includes(requestOrigin) ||
+      /^https:\/\/([a-zA-Z0-9_-]+\.)*vercel\.app$/.test(requestOrigin) ||
+      requestOrigin.endsWith('.vercel.app')
+    ) {
       return callback(null, true);
     }
     console.warn(`[Security - CORS Blocked] Origin not allowed: ${requestOrigin}`);
-    return callback(new Error('Origem não permitida pela política de CORS do PSAI'));
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

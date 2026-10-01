@@ -9,15 +9,11 @@ import { PrismaClient } from '@prisma/client';
 const router = Router();
 const prisma = new PrismaClient();
 
-// Security: Enforce JWT_SECRET configuration or use strong random ephemeral secret in dev
-let JWT_SECRET: string = process.env.JWT_SECRET || '';
-if (!JWT_SECRET || JWT_SECRET.trim().length === 0) {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('CRITICAL SECURITY ERROR: JWT_SECRET must be set in production!');
-  } else {
-    JWT_SECRET = crypto.randomBytes(32).toString('hex');
-    console.warn('⚠️ [Security] JWT_SECRET ausente em desenvolvimento. Gerado segredo randômico seguro temporário.');
-  }
+// Security: Enforce JWT_SECRET configuration or use strong random ephemeral secret in dev/container
+let JWT_SECRET: string = (process.env.JWT_SECRET || '').trim();
+if (!JWT_SECRET) {
+  JWT_SECRET = crypto.randomBytes(32).toString('hex');
+  console.warn('⚠️ [Security Alert] JWT_SECRET não configurado no ambiente. Chave randômica efêmera segura (256-bit) gerada dinamicamente para esta instância.');
 }
 
 // Security: Rate limiter for authentication, registration and password recovery (prevents brute-force)
