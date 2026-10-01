@@ -89,6 +89,13 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
   const sendingRef = useRef(false);
   const isSpeakingRef = useRef(false);
   const selectedVoiceRef = useRef(selectedVoice);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const animatingMessageIdRef = useRef<string | null>(null);
+  const liveSilenceTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    animatingMessageIdRef.current = animatingMessageId;
+  }, [animatingMessageId]);
 
   useEffect(() => {
     voiceModeActiveRef.current = voiceModeActive;
@@ -128,7 +135,45 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     };
   }, []);
 
-  // Initialize Speech Recognition
+  // Handler para parar a resposta da IA a qualquer momento
+  const handleStopAiResponse = () => {
+    console.log('[PSAI] Interrompendo resposta da IA...');
+    if (abortControllerRef.current) {
+      try { abortControllerRef.current.abort(); } catch (e) {}
+      abortControllerRef.current = null;
+    }
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      } catch (e) {}
+    }
+    if (window.speechSynthesis) {
+      try { window.speechSynthesis.cancel(); } catch (e) {}
+    }
+    setAnimatingMessageId(null);
+    animatingMessageIdRef.current = null;
+    setIsSpeaking(false);
+    setSending(false);
+
+    if (voiceModeActiveRef.current && recognitionRef.current) {
+      try { recognitionRef.current.start(); } catch (e) {}
+    }
+  };
+
+  // Atalho de teclado: tecla Escape para interromper resposta da IA
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && (sending || isSpeaking || animatingMessageId)) {
+        e.preventDefault();
+        handleStopAiResponse();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [sending, isSpeaking, animatingMessageId]);
+
+  // Initialize Speech Recognition para o MODO LIVE (com suporte a interrupção por voz / barge-in)
   const initSpeechRecognition = () => {
     if (recognitionRef.current) return recognitionRef.current;
 
@@ -138,41 +183,87 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     }
 
     const rec = new SpeechRecognition();
-    rec.continuous = false;
-    rec.interimResults = false;
+    rec.continuous = true;
+    rec.interimResults = true;
     rec.lang = 'pt-BR';
 
     rec.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      if (text && text.trim()) {
-        setInputMsg(text);
-        handleSendMessage(text);
+      let finalTranscript = '';
+      let interimTranscript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+
+      const spokenText = (finalTranscript || interimTranscript).trim();
+
+      // INTERRUPÇÃO POR VOZ (BARGE-IN) NO MODO LIVE:
+      // Se a IA estiver falando, reproduzindo áudio ou digitando, e o usuário começar a falar:
+      if (spokenText.length >= 2 && (isSpeakingRef.current || animatingMessageIdRef.current || sendingRef.current)) {
+        console.log('[Modo Live] Interrupção por voz detectada! Cortando resposta da IA...', spokenText);
+        if (audioRef.current) {
+          try {
+            audioRef.current.pause();
+            audioRef.current.currentTime = 0;
+          } catch (e) {}
+        }
+        if (window.speechSynthesis) {
+          try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
+        setIsSpeaking(false);
+        setAnimatingMessageId(null);
+        animatingMessageIdRef.current = null;
+
+        if (abortControllerRef.current) {
+          try { abortControllerRef.current.abort(); } catch (e) {}
+          abortControllerRef.current = null;
+        }
+        setSending(false);
+      }
+
+      // Se temos o texto final reconhecido:
+      const cleanFinal = finalTranscript.trim();
+      if (cleanFinal) {
+        if (liveSilenceTimerRef.current) clearTimeout(liveSilenceTimerRef.current);
+        setInputMsg('');
+        handleSendMessage(cleanFinal, true);
+        return;
+      }
+
+      // Debounce para fala contínua caso o navegador demore a marcar isFinal
+      if (spokenText.length > 4 && !isSpeakingRef.current && !sendingRef.current) {
+        if (liveSilenceTimerRef.current) clearTimeout(liveSilenceTimerRef.current);
+        liveSilenceTimerRef.current = setTimeout(() => {
+          if (voiceModeActiveRef.current && !sendingRef.current && !isSpeakingRef.current) {
+            setInputMsg('');
+            handleSendMessage(spokenText, true);
+          }
+        }, 1100);
       }
     };
 
     rec.onerror = (event: any) => {
-      console.error('Speech recognition error:', event.error);
+      console.warn('Speech recognition event:', event.error);
       if (event.error === 'not-allowed') {
-        setError('Permissão do microfone negada. Ative a permissão do microfone nas configurações do seu navegador para usar o Modo de Conversa.');
-      } else if (event.error === 'no-speech') {
-        console.log('Nenhuma fala detectada no Modo de Conversa.');
-      } else {
-        setError(`Erro no reconhecimento de voz: ${event.error}`);
+        setError('Permissão do microfone negada para o Modo Live.');
+        setVoiceModeActive(false);
       }
-      setVoiceModeActive(false);
     };
 
     rec.onend = () => {
-      console.log('Speech recognition ended');
+      // No Modo Live, mantém o canal de escuta ativo em tempo real
       setTimeout(() => {
-        if (voiceModeActiveRef.current && !isSpeakingRef.current && !sendingRef.current) {
+        if (voiceModeActiveRef.current) {
           try {
             rec.start();
-          } catch (e) {
-            console.error('Error restarting recognition:', e);
-          }
+          } catch (e) {}
         }
-      }, 300);
+      }, 250);
     };
 
     recognitionRef.current = rec;
@@ -239,7 +330,6 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
     rec.onend = () => {
       setIsTranscribing(false);
-      // Mantém isVoiceMessageRef ativo porque o texto gerado veio do microfone!
     };
 
     transcriptionRecognitionRef.current = rec;
@@ -253,13 +343,21 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
   const stopTranscription = (autoSend: boolean = false) => {
     if (transcriptionRecognitionRef.current) {
       try {
+        transcriptionRecognitionRef.current.onresult = null;
+        transcriptionRecognitionRef.current.onend = null;
+        transcriptionRecognitionRef.current.onerror = null;
         transcriptionRecognitionRef.current.stop();
       } catch (e) {}
+      transcriptionRecognitionRef.current = null;
     }
     setIsTranscribing(false);
 
     if (autoSend) {
       const text = (latestAudioTranscriptRef.current || inputMsg).trim();
+      setInputMsg('');
+      latestAudioTranscriptRef.current = '';
+      setIsVoiceMessage(false);
+      isVoiceMessageRef.current = false;
       if (text) {
         handleSendMessage(text, true);
       }
@@ -500,11 +598,15 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
   }, [session?.messages, sending, loading]);
 
   const handleSendMessage = async (textToSend?: string, forceVoiceResponse?: boolean) => {
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (e) {}
-    }
+    // Desvincula imediatamente o listener de transcrição para garantir que o input permaneça limpo
     if (transcriptionRecognitionRef.current) {
-      try { transcriptionRecognitionRef.current.stop(); } catch (e) {}
+      try {
+        transcriptionRecognitionRef.current.onresult = null;
+        transcriptionRecognitionRef.current.onend = null;
+        transcriptionRecognitionRef.current.onerror = null;
+        transcriptionRecognitionRef.current.stop();
+      } catch (e) {}
+      transcriptionRecognitionRef.current = null;
     }
     setIsTranscribing(false);
 
@@ -514,14 +616,21 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
     // Responde por voz se veio do microfone (Modo Áudio), do modo de conversa contínuo ou forceVoiceResponse
     const shouldRespondWithVoice = voiceModeActiveRef.current || isVoiceMessageRef.current || isVoiceMessage || forceVoiceResponse === true;
 
-    // Reseta flags de áudio para futuras mensagens
+    // Limpa imediatamente o input e todas as flags de áudio
+    setInputMsg('');
+    latestAudioTranscriptRef.current = '';
     isVoiceMessageRef.current = false;
     setIsVoiceMessage(false);
-    latestAudioTranscriptRef.current = '';
 
-    setInputMsg('');
     setSending(true);
     setError('');
+
+    // Prepara o AbortController para permitir que o botão "Parar" cancele a requisição HTTP
+    if (abortControllerRef.current) {
+      try { abortControllerRef.current.abort(); } catch (e) {}
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
     // Reseta estado de scroll para garantir que a nova mensagem do próprio usuário apareça
     userScrolledUpRef.current = false;
@@ -550,7 +659,10 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
           generateAudio: shouldRespondWithVoice,
           voice: selectedVoiceRef.current
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          signal: controller.signal
+        }
       );
 
       const { userMessage, aiMessage } = response.data;
@@ -622,6 +734,10 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
         }
       }
     } catch (err: any) {
+      if (axios.isCancel(err) || err.name === 'CanceledError' || err.name === 'AbortError') {
+        console.log('[PSAI] Resposta da IA interrompida pelo usuário.');
+        return;
+      }
       console.error(err);
       
       setVoiceModeActive(false);
@@ -886,6 +1002,8 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
             latestAudioTranscriptRef.current = '';
           }}
           sending={sending}
+          isAiResponding={sending || isSpeaking || Boolean(animatingMessageId)}
+          onStopAiResponse={handleStopAiResponse}
           voiceModeActive={voiceModeActive}
           isSpeaking={isSpeaking}
           isTranscribing={isTranscribing}

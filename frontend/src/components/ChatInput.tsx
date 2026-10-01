@@ -7,6 +7,8 @@ interface ChatInputProps {
   isVoiceMessage?: boolean;
   onUserType?: (msg: string) => void;
   sending: boolean;
+  isAiResponding?: boolean;
+  onStopAiResponse?: () => void;
   voiceModeActive: boolean;
   isSpeaking: boolean;
   isTranscribing: boolean;
@@ -22,6 +24,8 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   isVoiceMessage,
   onUserType,
   sending,
+  isAiResponding,
+  onStopAiResponse,
   voiceModeActive,
   isSpeaking,
   isTranscribing,
@@ -59,12 +63,12 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   <span className="w-0.5 h-3 bg-brand-gold rounded-full animate-pulse [animation-delay:0.15s]" />
                   <span className="w-0.5 h-2 bg-brand-gold rounded-full animate-pulse [animation-delay:0.3s]" />
                 </span>
-                <span>PSAI falando...</span>
+                <span>Modo Live • PSAI falando (Fale para interromper)</span>
               </>
             ) : sending ? (
               <>
                 <Loader2 size={12} className="animate-spin text-brand-gold" />
-                <span>Mapeando sentimentos...</span>
+                <span>Modo Live • Pensando na resposta...</span>
               </>
             ) : (
               <>
@@ -72,7 +76,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-gold opacity-75 animate-fade-in"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-gold"></span>
                 </span>
-                <span>PSAI ouvindo... fale agora.</span>
+                <span>Modo Live • Ouvindo em tempo real (Fale agora)</span>
               </>
             )}
           </div>
@@ -166,20 +170,31 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               )}
             </button>
 
-            {/* Botão de Enviar */}
-            <button
-              type="button"
-              onClick={() => onSendMessage()}
-              disabled={!inputMsg.trim() || sending}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
-                inputMsg.trim() && !sending
-                  ? 'bg-brand-gold text-brand-bg hover:bg-brand-goldHover shadow shadow-brand-gold/15 active:scale-95 cursor-pointer'
-                  : 'bg-transparent text-brand-textMuted/40 cursor-not-allowed'
-              }`}
-              title={isVoiceMessage || isTranscribing ? 'Enviar áudio transcrito (IA responderá por voz)' : 'Enviar mensagem'}
-            >
-              <Send size={12} fill="currentColor" className="sm:w-3.5 sm:h-3.5" />
-            </button>
+            {/* Botão de Enviar ou Parar */}
+            {isAiResponding ? (
+              <button
+                type="button"
+                onClick={onStopAiResponse}
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0 bg-red-500/20 text-red-400 border border-red-500/40 hover:bg-red-500 hover:text-white shadow-sm hover:shadow-[0_0_12px_rgba(239,68,68,0.3)] active:scale-95 cursor-pointer animate-pulse"
+                title="Parar resposta da IA"
+              >
+                <Square size={11} className="sm:w-3 sm:h-3 fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onSendMessage()}
+                disabled={!inputMsg.trim() || sending}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl flex items-center justify-center transition-all duration-200 flex-shrink-0 ${
+                  inputMsg.trim() && !sending
+                    ? 'bg-brand-gold text-brand-bg hover:bg-brand-goldHover shadow shadow-brand-gold/15 active:scale-95 cursor-pointer'
+                    : 'bg-transparent text-brand-textMuted/40 cursor-not-allowed'
+                }`}
+                title={isVoiceMessage || isTranscribing ? 'Enviar áudio transcrito (IA responderá por voz)' : 'Enviar mensagem'}
+              >
+                <Send size={12} fill="currentColor" className="sm:w-3.5 sm:h-3.5" />
+              </button>
+            )}
           </div>
         </div>
         <p className="text-center text-[11px] text-brand-textMuted mt-1 font-light">
