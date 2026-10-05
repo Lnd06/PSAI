@@ -9,6 +9,7 @@ import { ChatRedirect } from './components/ChatRedirect';
 import { LandingPage } from './components/LandingPage';
 import { Library } from './components/Library';
 import { Plans } from './components/Plans';
+import { Dashboard } from './components/Dashboard';
 
 // Configure dynamic API URL resolution for production builds
 // If VITE_API_URL is empty or points to the defunct Cloud Run instance, use relative paths so requests hit the container's own backend
@@ -133,7 +134,7 @@ export const App: React.FC = () => {
         {/* Private Routes */}
         <Route 
           path="/dashboard" 
-          element={token ? <ChatRedirect token={token} /> : <Navigate to="/login" />} 
+          element={token ? <Dashboard token={token} user={user} onLogout={handleLogout} /> : <Navigate to="/login" />} 
         />
         <Route 
           path="/chat" 

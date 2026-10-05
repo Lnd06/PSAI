@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, History, BookOpen, Sparkles, LogOut } from 'lucide-react';
+import { X, Plus, History, BookOpen, Sparkles, LogOut, LayoutDashboard } from 'lucide-react';
 import { PSAILogo } from './PSAILogo';
 
 export interface SidebarSession {
@@ -112,6 +112,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
             })}
           </AnimatePresence>
         </nav>
+
+        {/* Dashboard / Painel de Bem-Estar Link */}
+        <div className="px-3 py-1 flex-shrink-0">
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-brand-gold/[0.05] transition-all cursor-pointer border border-brand-border bg-brand-card/40 text-brand-text hover:text-brand-gold text-left group"
+          >
+            <div className="w-5 h-5 rounded-lg bg-brand-gold/[0.1] group-hover:bg-brand-gold/[0.2] flex items-center justify-center flex-shrink-0 text-brand-gold transition-colors">
+              <LayoutDashboard size={11} />
+            </div>
+            <span className="text-[10px] uppercase font-bold tracking-wider font-sans">Painel de Bem-Estar</span>
+          </button>
+        </div>
 
         {/* RAG Library Quick Link */}
         <div className="px-3 py-1 flex-shrink-0">

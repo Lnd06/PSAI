@@ -74,4 +74,14 @@ export const createSubscription = async (subscriptionData: any) => {
   }
 };
 
+export const getPaymentPixQrCode = async (paymentId: string): Promise<{ encodedImage: string; payload: string; expirationDate: string } | null> => {
+  try {
+    const response = await asaasApi.get(`/payments/${paymentId}/pixQrCode`);
+    return response.data;
+  } catch (error: any) {
+    console.error(`[Asaas] Erro ao buscar Pix QR Code para payment ${paymentId}:`, error.response?.data || error.message);
+    return null;
+  }
+};
+
 export default asaasApi;

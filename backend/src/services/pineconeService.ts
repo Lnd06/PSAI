@@ -213,6 +213,7 @@ export async function upsertBookChunks(
 export async function deleteBookChunks(bookId: string, content: string): Promise<void> {
   const chunks = splitTextIntoChunks(content);
   const ids = chunks.map((_, idx) => `book_${bookId}_chunk_${idx}`);
+  if (ids.length === 0) return;
   
   const index = pc.index(pineconeIndex);
   const namespace = index.namespace(pineconeNamespace);
@@ -220,7 +221,11 @@ export async function deleteBookChunks(bookId: string, content: string): Promise
   console.log(`[RAG Service] Deletando ${ids.length} trechos do Pinecone para o livro ID ${bookId}`);
   
   try {
-    await namespace.deleteMany(ids);
+    const batchSize = 500;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const slice = ids.slice(i, i + batchSize);
+      await namespace.deleteMany(slice);
+    }
   } catch (err) {
     console.error(`[RAG Service] Erro ao deletar vetores do Pinecone:`, err);
   }

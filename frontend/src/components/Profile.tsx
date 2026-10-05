@@ -9,7 +9,13 @@ import {
   User, 
   Mail, 
   Phone, 
-  FileText
+  FileText,
+  Sparkles,
+  ShieldCheck,
+  AlertCircle,
+  Calendar,
+  Ban,
+  CreditCard
 } from 'lucide-react';
 import { PSAILogo } from './PSAILogo';
 
@@ -34,11 +40,35 @@ export const Profile: React.FC<ProfileProps> = ({ token, user, onUserUpdate, onL
   const [telefone, setTelefone] = useState('');
   const [selectedMode, setSelectedMode] = useState('natural');
   
+  const [subData, setSubData] = useState<{
+    active: boolean;
+    plan: string;
+    status: string;
+    nextDueDate: string | null;
+    cycle?: string | null;
+    cancelAtPeriodEnd?: boolean;
+  } | null>(null);
+  const [loadingSub, setLoadingSub] = useState(true);
+  const [cancellingSub, setCancellingSub] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
   const navigate = useNavigate();
+
+  const fetchSubscriptionStatus = async () => {
+    try {
+      setLoadingSub(true);
+      const res = await axios.get('http://localhost:5000/api/payments/status', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSubData(res.data);
+    } catch (err) {
+      console.warn('Falha ao carregar status de assinatura:', err);
+    } finally {
+      setLoadingSub(false);
+    }
+  };
 
   useEffect(() => {
     if (user) {
@@ -49,7 +79,32 @@ export const Profile: React.FC<ProfileProps> = ({ token, user, onUserUpdate, onL
     }
     const savedMode = localStorage.getItem('psai_default_mode') || 'natural';
     setSelectedMode(savedMode);
+    fetchSubscriptionStatus();
   }, [user]);
+
+  const handleCancelSubscription = async () => {
+    if (!confirm('Tem certeza de que deseja cancelar sua assinatura? O cancelamento evitará cobranças futuras.')) {
+      return;
+    }
+
+    try {
+      setCancellingSub(true);
+      setError('');
+      setSuccess('');
+      const res = await axios.post(
+        'http://localhost:5000/api/payments/cancel_subscription',
+        {},
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setSuccess(res.data.message || 'Assinatura cancelada com sucesso.');
+      await fetchSubscriptionStatus();
+    } catch (err: any) {
+      console.error(err);
+      setError(err.response?.data?.error || 'Erro ao cancelar assinatura.');
+    } finally {
+      setCancellingSub(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -208,7 +263,82 @@ export const Profile: React.FC<ProfileProps> = ({ token, user, onUserUpdate, onL
             </div>
           </div>
 
+          {/* Section 3: Assinatura & Plano */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 border-b border-brand-border pb-2">
+              <CreditCard size={16} className="text-brand-gold" />
+              <h3 className="text-sm font-semibold text-brand-text">Assinatura & Plano</h3>
+            </div>
 
+            <div className="p-4 rounded-2xl bg-brand-bg/50 border border-brand-border space-y-4">
+              {loadingSub ? (
+                <div className="flex items-center gap-2.5 text-xs text-brand-textMuted py-3 font-sans">
+                  <Loader2 size={15} className="animate-spin text-brand-gold" />
+                  <span>Carregando dados da assinatura...</span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <span className="text-[10px] font-bold text-brand-textMuted uppercase tracking-wider block">Plano Atual</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-bold text-brand-text capitalize">
+                          {subData?.plan && subData.plan !== 'trial' ? `Plano ${subData.plan}` : 'Plano Gratuito (Trial)'}
+                        </span>
+                        {subData?.active ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/25">
+                            <ShieldCheck size={11} /> Ativo
+                          </span>
+                        ) : subData?.status === 'overdue' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 border border-amber-500/25">
+                            <AlertCircle size={11} /> Pendente / Vencido
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-brand-textMuted/10 text-brand-textMuted border border-brand-border">
+                            Sem assinatura ativa
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => navigate('/plans')}
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-brand-gold/10 hover:bg-brand-gold/20 text-brand-gold text-xs font-bold transition-all border border-brand-gold/25 cursor-pointer self-start sm:self-auto"
+                    >
+                      <Sparkles size={12} /> {subData?.active ? 'Mudar de Plano' : 'Ver Planos & Assinar'}
+                    </button>
+                  </div>
+
+                  {subData?.nextDueDate && (
+                    <div className="flex items-center gap-2 text-xs text-brand-textMuted font-sans pt-2 border-t border-brand-border/60">
+                      <Calendar size={13} className="text-brand-gold" />
+                      <span>Próximo vencimento / renovação: <strong>{new Date(subData.nextDueDate).toLocaleDateString('pt-BR')}</strong></span>
+                    </div>
+                  )}
+
+                  {subData?.cancelAtPeriodEnd && (
+                    <div className="p-3 rounded-xl bg-amber-500/[0.05] border border-amber-500/20 text-amber-700 text-xs font-sans">
+                      Assinatura programada para encerramento ao final do ciclo pago. Não haverá novas cobranças.
+                    </div>
+                  )}
+
+                  {subData?.active && !subData?.cancelAtPeriodEnd && (
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleCancelSubscription}
+                        disabled={cancellingSub}
+                        className="text-[11px] font-semibold text-rose-500 hover:text-rose-600 hover:underline transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Ban size={12} /> {cancellingSub ? 'Cancelando...' : 'Cancelar Assinatura'}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
 
           {/* Footer Actions */}
           <div className="pt-4 border-t border-brand-border flex items-center justify-between">

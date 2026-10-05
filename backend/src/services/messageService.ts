@@ -88,6 +88,18 @@ function quickSentimentHeuristic(text: string): { sentiment: string; score: numb
 }
 
 /**
+ * Fast AI Tone / Emotion classifier (< 0.1ms) for instantaneous UI mood response.
+ */
+function quickAiToneHeuristic(text: string): string {
+  const lower = text.toLowerCase();
+  if (/alegria|comemoro|parabéns|parabens|maravilh|feliz|ótimo|otimo|vitória|vitoria|conquista|orgulho/i.test(lower)) return 'alegria';
+  if (/tristeza|luto|perda|dor profunda|lágrima|lagrima/i.test(lower)) return 'tristeza';
+  if (/surpresa|inesperado|curioso|uau/i.test(lower)) return 'surpresa';
+  if (/preocup|cuidado|alerta/i.test(lower)) return 'medo';
+  return 'Neutro';
+}
+
+/**
  * Process a user message and orchestrate sentiment analysis, memory retrieval, RAG library matching,
  * therapeutic response generation, background summarization, and optional TTS speech pre-generation.
  */
@@ -113,7 +125,9 @@ export async function processUserMessage(
             profileJson: true,
             openRouterApiKey: true,
             aiModel: true,
-            geminiApiKey: true
+            geminiApiKey: true,
+            subscriptionPlan: true,
+            subscriptionStatus: true
           }
         }
       }
@@ -183,11 +197,17 @@ export async function processUserMessage(
     }
   );
 
-  // 5. Emotion classification (capped at 100ms)
-  const aiEmotion = await Promise.race([
-    classifyEmotion(aiContent).catch(() => 'Neutro'),
-    new Promise<string>((resolve) => setTimeout(() => resolve('Neutro'), 100))
-  ]);
+  // 5. Emotion classification: Instant heuristic with non-blocking enrichment
+  const heuristicEmotion = quickAiToneHeuristic(aiContent);
+  let aiEmotion = heuristicEmotion;
+  try {
+    aiEmotion = await Promise.race([
+      classifyEmotion(aiContent).catch(() => heuristicEmotion),
+      new Promise<string>((resolve) => setTimeout(() => resolve(heuristicEmotion), 50))
+    ]);
+  } catch {
+    aiEmotion = heuristicEmotion;
+  }
 
   // 6. Save user message and AI message to database concurrently
   const [userMessage, aiMessage] = await Promise.all([
@@ -252,9 +272,13 @@ export async function processUserMessage(
     }
   })();
 
-  // 6. Optional audio pre-generation
+  // 6. Optional audio pre-generation (strictly gated to authorized plans)
   let audioBase64: string | undefined = undefined;
-  if (generateAudio) {
+  const userPlan = (session.user.subscriptionPlan || 'trial').toLowerCase();
+  const userStatus = session.user.subscriptionStatus || 'trial';
+  const voiceAllowed = (userStatus === 'trial') || (userStatus === 'active' && (userPlan === 'profundo' || userPlan === 'familia'));
+
+  if (generateAudio && voiceAllowed) {
     try {
       console.log(`[TTS Service] Otimização: pré-gerando áudio em paralelo...`);
       const audioBuffer = await generateSpeech(aiContent, voice, aiEmotion);

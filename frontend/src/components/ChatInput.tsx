@@ -46,8 +46,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
+      // Prevent submit during IME character composition (accents, Japanese/Chinese input, etc.)
+      if ((e.nativeEvent as any).isComposing) return;
       e.preventDefault();
-      onSendMessage();
+      // Guard against rapid duplicate triggers, sending while busy, or empty inputs
+      if (!sending && !isAiResponding && inputMsg.trim()) {
+        onSendMessage();
+      }
     }
   };
 

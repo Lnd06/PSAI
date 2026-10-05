@@ -10,7 +10,11 @@ import {
   FileText, 
   QrCode,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  CheckCircle2,
+  ExternalLink,
+  RefreshCw
 } from 'lucide-react';
 import { PSAILogo } from './PSAILogo';
 
@@ -81,6 +85,18 @@ export const Plans: React.FC = () => {
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Payment Result State
+  const [paymentResult, setPaymentResult] = useState<{
+    invoiceUrl?: string | null;
+    bankSlipUrl?: string | null;
+    pixQrCodeImage?: string | null;
+    pixCopyPaste?: string | null;
+    pixExpirationDate?: string | null;
+  } | null>(null);
+  const [copiedPix, setCopiedPix] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
+
   useEffect(() => {
     const storedToken = localStorage.getItem('psai_token');
     const storedUser = localStorage.getItem('psai_user');
@@ -116,7 +132,47 @@ export const Plans: React.FC = () => {
   const handleSelectPlan = (plan: any) => {
     setSelectedPlan(plan);
     setErrorMsg('');
+    setPaymentResult(null);
+    setPaymentSuccess(false);
     setShowModal(true);
+  };
+
+  const handleCopyPix = () => {
+    if (paymentResult?.pixCopyPaste) {
+      navigator.clipboard.writeText(paymentResult.pixCopyPaste);
+      setCopiedPix(true);
+      setTimeout(() => setCopiedPix(false), 2500);
+    }
+  };
+
+  const handleVerifyPayment = async () => {
+    setCheckingStatus(true);
+    setErrorMsg('');
+    try {
+      const response = await axios.get('http://localhost:5000/api/payments/status', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSubStatus(response.data);
+      if (response.data.active) {
+        setPaymentSuccess(true);
+        if (user) {
+          const updatedUser = { ...user, subscriptionStatus: 'active', subscriptionPlan: selectedPlan?.id || 'essencial' };
+          localStorage.setItem('psai_user', JSON.stringify(updatedUser));
+          setUser(updatedUser);
+        }
+        setTimeout(() => {
+          setShowModal(false);
+          navigate('/dashboard');
+        }, 2200);
+      } else {
+        setErrorMsg('Pagamento ainda não confirmado. Se acabou de efetuar o PIX ou cartão, aguarde alguns instantes e tente novamente.');
+      }
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg('Não foi possível verificar o pagamento agora.');
+    } finally {
+      setCheckingStatus(false);
+    }
   };
 
   const handleCheckoutSubmit = async (e: React.FormEvent) => {
@@ -143,15 +199,15 @@ export const Plans: React.FC = () => {
         }
       );
 
-      // Se tiver sucesso e retornar o link de checkout/fatura da Asaas
-      if (response.data.invoiceUrl) {
-        // Atualiza os dados de contato do usuário no localStorage
-        if (user) {
-          const updatedUser = { ...user, cpf, telefone };
-          localStorage.setItem('psai_user', JSON.stringify(updatedUser));
-        }
-        // Redireciona para o checkout da Asaas
-        window.location.href = response.data.invoiceUrl;
+      // Atualiza os dados de contato do usuário no localStorage
+      if (user) {
+        const updatedUser = { ...user, cpf, telefone };
+        localStorage.setItem('psai_user', JSON.stringify(updatedUser));
+        setUser(updatedUser);
+      }
+
+      if (response.data.pixQrCodeImage || response.data.pixCopyPaste || response.data.invoiceUrl) {
+        setPaymentResult(response.data);
       } else {
         setErrorMsg('Erro: Link de pagamento não gerado pela Asaas.');
       }
@@ -285,104 +341,217 @@ export const Plans: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleCheckoutSubmit} className="space-y-4 font-sans text-left">
-              {/* CPF input */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-brand-textMuted">CPF</label>
-                <input 
-                  type="text" 
-                  value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
-                  placeholder="000.000.000-00"
-                  className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-gold/50"
-                  required
-                />
+            {paymentSuccess ? (
+              <div className="py-8 text-center space-y-4 font-sans">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto text-emerald-600 animate-bounce">
+                  <CheckCircle2 size={36} />
+                </div>
+                <h4 className="text-lg font-serif font-semibold text-brand-text">Pagamento Confirmado!</h4>
+                <p className="text-xs text-brand-textMuted max-w-xs mx-auto">
+                  Sua assinatura do plano <strong>{selectedPlan.name}</strong> está ativa. Estamos redirecionando você...
+                </p>
               </div>
+            ) : paymentResult ? (
+              <div className="space-y-5 font-sans text-center">
+                {paymentResult.pixQrCodeImage || paymentResult.pixCopyPaste ? (
+                  <>
+                    <div className="p-3 bg-brand-gold/10 border border-brand-gold/25 rounded-2xl text-xs text-brand-text">
+                      <p className="font-semibold text-brand-gold">Pague com PIX para liberação instantânea</p>
+                      <p className="text-[11px] text-brand-textMuted mt-0.5">Escaneie o QR Code no app do seu banco ou use a chave Copia e Cola.</p>
+                    </div>
 
-              {/* Telephone input */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-brand-textMuted">Celular / WhatsApp</label>
-                <input 
-                  type="text" 
-                  value={telefone}
-                  onChange={(e) => setTelefone(e.target.value)}
-                  placeholder="(00) 90000-0000"
-                  className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-gold/50"
-                  required
-                />
-              </div>
+                    {paymentResult.pixQrCodeImage && (
+                      <div className="flex justify-center my-2">
+                        <div className="p-3 bg-white rounded-2xl shadow-md border border-brand-border">
+                          <img 
+                            src={paymentResult.pixQrCodeImage} 
+                            alt="QR Code PIX Asaas" 
+                            className="w-44 h-44 object-contain"
+                          />
+                        </div>
+                      </div>
+                    )}
 
-              {/* Billing Type selection */}
-              <div className="space-y-2">
-                <label className="text-[11px] font-bold uppercase tracking-wider text-brand-textMuted">Forma de Pagamento</label>
-                <div className="grid grid-cols-3 gap-2.5">
+                    {paymentResult.pixCopyPaste && (
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-brand-textMuted uppercase tracking-wider block text-left">
+                          Pix Copia e Cola
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="text" 
+                            readOnly 
+                            value={paymentResult.pixCopyPaste}
+                            className="w-full bg-brand-bg border border-brand-border rounded-xl px-3 py-2 text-xs text-brand-textMuted font-mono truncate select-all"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleCopyPix}
+                            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer ${
+                              copiedPix 
+                                ? 'bg-emerald-600 text-white' 
+                                : 'bg-brand-gold text-brand-bg hover:bg-brand-goldHover'
+                            }`}
+                          >
+                            {copiedPix ? (
+                              <>
+                                <Check size={14} /> Copiado!
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={14} /> Copiar
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="py-6 text-center space-y-4">
+                    <p className="text-xs text-brand-textMuted">
+                      Sua fatura foi gerada na Asaas. Clique no botão abaixo para concluir o pagamento de forma segura:
+                    </p>
+                    {paymentResult.invoiceUrl && (
+                      <a
+                        href={paymentResult.invoiceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-brand-gold text-brand-bg font-bold text-xs uppercase tracking-wider hover:bg-brand-goldHover shadow transition-all"
+                      >
+                        Abrir Fatura na Asaas <ExternalLink size={14} />
+                      </a>
+                    )}
+                  </div>
+                )}
+
+                {/* Status check buttons */}
+                <div className="pt-3 border-t border-brand-border flex flex-col gap-2.5">
                   <button
                     type="button"
-                    onClick={() => setBillingType('PIX')}
-                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-all ${
-                      billingType === 'PIX'
-                        ? 'border-brand-gold bg-brand-gold/5 text-brand-gold shadow-sm shadow-brand-gold/5'
-                        : 'border-brand-border hover:border-brand-gold/30 hover:bg-brand-bg/50'
-                    }`}
+                    onClick={handleVerifyPayment}
+                    disabled={checkingStatus}
+                    className="w-full py-3 rounded-full bg-brand-gold text-brand-bg font-bold text-xs uppercase tracking-wider hover:bg-brand-goldHover flex items-center justify-center gap-2 shadow transition-all cursor-pointer"
                   >
-                    <QrCode size={16} /> PIX
+                    {checkingStatus ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" /> Verificando...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw size={14} /> Já paguei / Verificar status
+                      </>
+                    )}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setBillingType('CREDIT_CARD')}
-                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-all ${
-                      billingType === 'CREDIT_CARD'
-                        ? 'border-brand-gold bg-brand-gold/5 text-brand-gold shadow-sm shadow-brand-gold/5'
-                        : 'border-brand-border hover:border-brand-gold/30 hover:bg-brand-bg/50'
-                    }`}
+                    onClick={() => { setShowModal(false); setPaymentResult(null); }}
+                    className="w-full py-2.5 rounded-full border border-brand-border text-brand-textMuted text-xs font-semibold hover:bg-brand-bg hover:text-brand-text transition-colors"
                   >
-                    <CreditCard size={16} /> Cartão
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBillingType('BOLETO')}
-                    className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-all ${
-                      billingType === 'BOLETO'
-                        ? 'border-brand-gold bg-brand-gold/5 text-brand-gold shadow-sm shadow-brand-gold/5'
-                        : 'border-brand-border hover:border-brand-gold/30 hover:bg-brand-bg/50'
-                    }`}
-                  >
-                    <FileText size={16} /> Boleto
+                    Fechar
                   </button>
                 </div>
               </div>
+            ) : (
+              <form onSubmit={handleCheckoutSubmit} className="space-y-4 font-sans text-left">
+                {/* CPF input */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-brand-textMuted">CPF</label>
+                  <input 
+                    type="text" 
+                    value={cpf}
+                    onChange={(e) => setCpf(e.target.value)}
+                    placeholder="000.000.000-00"
+                    className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-gold/50"
+                    required
+                  />
+                </div>
 
-              {/* Bottom values summary */}
-              <div className="pt-2 border-t border-brand-border flex items-center justify-between text-sm">
-                <span className="font-light text-brand-textMuted">Valor Mensal:</span>
-                <span className="font-semibold text-brand-text text-base">R$ {selectedPlan.price.toFixed(2).replace('.', ',')}</span>
-              </div>
+                {/* Telephone input */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-brand-textMuted">Celular / WhatsApp</label>
+                  <input 
+                    type="text" 
+                    value={telefone}
+                    onChange={(e) => setTelefone(e.target.value)}
+                    placeholder="(00) 90000-0000"
+                    className="w-full bg-brand-bg border border-brand-border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-brand-gold/50"
+                    required
+                  />
+                </div>
 
-              {/* Action buttons */}
-              <div className="flex items-center gap-3 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  disabled={loadingCheckout}
-                  className="flex-1 py-3 text-sm font-semibold rounded-full border border-brand-border text-brand-textMuted hover:bg-brand-bg hover:text-brand-text transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={loadingCheckout}
-                  className="flex-1 py-3 text-sm font-semibold rounded-full bg-brand-gold text-brand-bg hover:bg-brand-goldHover transition-colors flex items-center justify-center gap-1.5 shadow"
-                >
-                  {loadingCheckout ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" /> Processando...
-                    </>
-                  ) : (
-                    'Assinar'
-                  )}
-                </button>
-              </div>
-            </form>
+                {/* Billing Type selection */}
+                <div className="space-y-2">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-brand-textMuted">Forma de Pagamento</label>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setBillingType('PIX')}
+                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-all ${
+                        billingType === 'PIX'
+                          ? 'border-brand-gold bg-brand-gold/5 text-brand-gold shadow-sm shadow-brand-gold/5'
+                          : 'border-brand-border hover:border-brand-gold/30 hover:bg-brand-bg/50'
+                      }`}
+                    >
+                      <QrCode size={16} /> PIX
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingType('CREDIT_CARD')}
+                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-all ${
+                        billingType === 'CREDIT_CARD'
+                          ? 'border-brand-gold bg-brand-gold/5 text-brand-gold shadow-sm shadow-brand-gold/5'
+                          : 'border-brand-border hover:border-brand-gold/30 hover:bg-brand-bg/50'
+                      }`}
+                    >
+                      <CreditCard size={16} /> Cartão
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBillingType('BOLETO')}
+                      className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border text-xs font-medium transition-all ${
+                        billingType === 'BOLETO'
+                          ? 'border-brand-gold bg-brand-gold/5 text-brand-gold shadow-sm shadow-brand-gold/5'
+                          : 'border-brand-border hover:border-brand-gold/30 hover:bg-brand-bg/50'
+                      }`}
+                    >
+                      <FileText size={16} /> Boleto
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bottom values summary */}
+                <div className="pt-2 border-t border-brand-border flex items-center justify-between text-sm">
+                  <span className="font-light text-brand-textMuted">Valor Mensal:</span>
+                  <span className="font-semibold text-brand-text text-base">R$ {selectedPlan.price.toFixed(2).replace('.', ',')}</span>
+                </div>
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    disabled={loadingCheckout}
+                    className="flex-1 py-3 text-sm font-semibold rounded-full border border-brand-border text-brand-textMuted hover:bg-brand-bg hover:text-brand-text transition-colors cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loadingCheckout}
+                    className="flex-1 py-3 text-sm font-semibold rounded-full bg-brand-gold text-brand-bg hover:bg-brand-goldHover transition-colors flex items-center justify-center gap-1.5 shadow cursor-pointer"
+                  >
+                    {loadingCheckout ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" /> Processando...
+                      </>
+                    ) : (
+                      'Gerar Pagamento'
+                    )}
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}

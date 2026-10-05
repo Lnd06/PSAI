@@ -51,6 +51,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, user, onLogout }) =
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [creatingSession, setCreatingSession] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
 
   const navigate = useNavigate();
 
@@ -109,9 +110,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, user, onLogout }) =
 
   const handleDeleteSession = async (e: React.MouseEvent, sessionId: string) => {
     e.stopPropagation();
-    if (!confirm('Deseja realmente excluir esta sessão do seu histórico?')) return;
+    if (!confirm('Deseja realmente excluir esta sessão do seu diário? Todas as mensagens e reflexões deste registro serão permanentemente apagadas.')) return;
 
     try {
+      setDeletingSessionId(sessionId);
       await axios.delete(`http://localhost:5000/api/chat/${sessionId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -119,6 +121,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, user, onLogout }) =
     } catch (err) {
       console.error(err);
       alert('Erro ao excluir sessão.');
+    } finally {
+      setDeletingSessionId(null);
     }
   };
 
@@ -131,10 +135,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, user, onLogout }) =
   };
 
   const getMoodColor = (moodName: string) => {
-    const rawMood = Object.keys(MOOD_COLORS).find(
-      (key) => moodName.toLowerCase().includes(key.toLowerCase())
-    );
-    return rawMood ? MOOD_COLORS[rawMood] : '#7A7060';
+    if (!moodName) return '#7A7060';
+    const lower = moodName.toLowerCase();
+    if (lower.includes('feliz') || lower.includes('happy') || lower.includes('paz') || lower.includes('alegr')) return '#4A7265';
+    if (lower.includes('ansio') || lower.includes('anxio') || lower.includes('preocup')) return '#8F7AD2';
+    if (lower.includes('estress') || lower.includes('stress') || lower.includes('irrit')) return '#C0392B';
+    if (lower.includes('trist') || lower.includes('depres') || lower.includes('desanim')) return '#3A7CA5';
+    return '#7A7060';
   };
 
   const getSentimentLabel = (category: string) => {
@@ -463,10 +470,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ token, user, onLogout }) =
                         
                         <button
                           onClick={(e) => handleDeleteSession(e, sess.id)}
-                          className="p-1.5 rounded-lg text-brand-textMuted/70 hover:text-rose-600 hover:bg-brand-card transition-colors"
+                          disabled={deletingSessionId === sess.id}
+                          className="p-1.5 rounded-lg text-brand-textMuted/70 hover:text-rose-600 hover:bg-brand-card transition-colors disabled:opacity-40"
                           title="Excluir histórico"
                         >
-                          <Trash2 size={12} />
+                          {deletingSessionId === sess.id ? (
+                            <Loader2 size={12} className="animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
                         </button>
                       </div>
                     </div>

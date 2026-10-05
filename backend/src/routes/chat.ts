@@ -189,6 +189,27 @@ router.post('/tts', authenticateToken, chatAiLimiter, async (req: AuthenticatedR
       return res.status(400).json({ message: 'O texto para síntese de voz não pode estar vazio' });
     }
 
+    const userId = req.user!.id;
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { subscriptionPlan: true, subscriptionStatus: true }
+    });
+
+    const plan = (user?.subscriptionPlan || 'trial').toLowerCase();
+    const status = user?.subscriptionStatus || 'trial';
+
+    // O Modo de Voz é exclusivo dos planos Profundo e Família (ou em período de teste gratuito)
+    const isAllowed = (status === 'trial') || (status === 'active' && (plan === 'profundo' || plan === 'familia'));
+    if (!isAllowed) {
+      const isOverdueOrCancelled = status === 'overdue' || status === 'cancelled';
+      return res.status(403).json({
+        message: isOverdueOrCancelled
+          ? 'Sua assinatura está suspensa ou cancelada. Regularize seu plano para utilizar o Modo de Voz.'
+          : 'O Modo de Voz é um recurso exclusivo dos planos Profundo e Família. Acesse Planos para fazer upgrade.',
+        upgradeRequired: true
+      });
+    }
+
     console.log(`[TTS Route] Recebida solicitação de voz para texto: "${text.substring(0, 40)}..." | Voice: ${voice} | Emotion: ${emotion}`);
     const audioBuffer = await generateSpeech(text, voice, emotion);
 

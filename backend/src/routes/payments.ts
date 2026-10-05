@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { authenticateToken, AuthenticatedRequest } from './auth';
-import { createCustomer, createSubscription } from '../services/asaasService';
+import { createCustomer, createSubscription, getPaymentPixQrCode } from '../services/asaasService';
 import asaasApi from '../services/asaasService';
 
 const router = Router();
@@ -71,6 +71,7 @@ router.post('/create_payment', authenticateToken, async (req: AuthenticatedReque
     });
 
     // 2. Criar a Assinatura (Subscription)
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim().replace(/\/+$/, '');
     const subscriptionData = {
       customer: customer.id,
       billingType: billingType || 'UNDEFINED',
@@ -82,27 +83,51 @@ router.post('/create_payment', authenticateToken, async (req: AuthenticatedReque
       description: `Assinatura PSAI - Plano ${planType.toUpperCase()}`,
       externalReference: `USER_${user.id}_PLAN_${planType.toLowerCase()}`,
       callback: {
-        successUrl: 'http://localhost:3000/profile',
+        successUrl: `${frontendUrl}/profile?payment=success`,
         autoRedirect: true
       }
     };
 
     const subscription = await createSubscription(subscriptionData);
 
+    // Salva a tentativa de assinatura no usuário para rastreabilidade
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        subscriptionPlan: planType.toLowerCase(),
+        subscriptionId: subscription.id
+      }
+    });
+
     // Pequeno atraso para a Asaas gerar a primeira cobrança da assinatura
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
-    // 3. Buscar a primeira cobrança da assinatura para retornar o link de fatura
-    const paymentsRes = await asaasApi.get(
-      `/payments?subscription=${subscription.id}`
-    );
-    const firstPayment = paymentsRes.data?.data?.[0];
+    // 3. Buscar a primeira cobrança da assinatura para retornar o link de fatura e PIX
+    let firstPayment: any = null;
+    let pixData: { encodedImage: string; payload: string; expirationDate: string } | null = null;
+
+    try {
+      const paymentsRes = await asaasApi.get(
+        `/payments?subscription=${subscription.id}`
+      );
+      firstPayment = paymentsRes.data?.data?.[0];
+
+      // Se for pagamento via PIX, busca o QR Code e código Copia e Cola via endpoint dedicado
+      if (firstPayment && (billingType === 'PIX' || firstPayment.billingType === 'PIX')) {
+        pixData = await getPaymentPixQrCode(firstPayment.id);
+      }
+    } catch (err: any) {
+      console.warn('⚠️ Não foi possível obter detalhes imediatos do primeiro pagamento:', err.message);
+    }
 
     return res.json({
+      subscriptionId: subscription.id,
       paymentId: firstPayment ? firstPayment.id : subscription.id,
       invoiceUrl: firstPayment ? firstPayment.invoiceUrl : null,
       bankSlipUrl: firstPayment ? firstPayment.bankSlipUrl : null,
-      pixQrCode: firstPayment ? firstPayment.pixQrCode : null
+      pixQrCodeImage: pixData?.encodedImage ? `data:image/png;base64,${pixData.encodedImage}` : null,
+      pixCopyPaste: pixData?.payload || null,
+      pixExpirationDate: pixData?.expirationDate || null
     });
 
   } catch (error: any) {
@@ -115,7 +140,7 @@ router.post('/create_payment', authenticateToken, async (req: AuthenticatedReque
 
 /**
  * GET /api/payments/status
- * Verifica o status de assinatura ativa do usuário logado
+ * Verifica e sincroniza o status de assinatura ativa do usuário logado
  */
 router.get('/status', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -123,31 +148,71 @@ router.get('/status', authenticateToken, async (req: AuthenticatedRequest, res: 
       where: { id: req.user!.id }
     });
 
-    if (!user || !user.subscriptionId) {
-      return res.json({ active: false, nextDueDate: null });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
     }
 
-    if (user.subscriptionId.startsWith('sub_')) {
-      const response = await asaasApi.get(`/subscriptions/${user.subscriptionId}`);
-      const sub = response.data;
+    if (!user.subscriptionId) {
       return res.json({
-        active: sub.status === 'ACTIVE',
-        nextDueDate: sub.nextDueDate,
-        cycle: sub.cycle
-      });
-    } else {
-      // Cobrança Avulsa/Pix avulso
-      const response = await asaasApi.get(`/payments/${user.subscriptionId}`);
-      const pay = response.data;
-      return res.json({
-        active: pay.status === 'RECEIVED' || pay.status === 'CONFIRMED',
-        nextDueDate: pay.dueDate,
-        cycle: null
+        active: user.subscriptionStatus === 'active',
+        plan: user.subscriptionPlan || 'trial',
+        status: user.subscriptionStatus || 'trial',
+        nextDueDate: null,
+        cycle: null,
+        cancelAtPeriodEnd: user.cancelAtPeriodEnd
       });
     }
+
+    let active = user.subscriptionStatus === 'active';
+    let nextDueDate: string | null = null;
+    let cycle: string | null = null;
+
+    try {
+      if (user.subscriptionId.startsWith('sub_')) {
+        const response = await asaasApi.get(`/subscriptions/${user.subscriptionId}`);
+        const sub = response.data;
+        active = sub.status === 'ACTIVE';
+        nextDueDate = sub.nextDueDate || null;
+        cycle = sub.cycle || null;
+
+        // Auto-sincroniza com o banco local caso a Asaas tenha alterado o status
+        const newDbStatus = sub.status === 'ACTIVE' ? 'active' : (sub.status === 'OVERDUE' ? 'overdue' : 'cancelled');
+        if (newDbStatus !== user.subscriptionStatus) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { subscriptionStatus: newDbStatus }
+          });
+        }
+      } else {
+        // Cobrança avulsa
+        const response = await asaasApi.get(`/payments/${user.subscriptionId}`);
+        const pay = response.data;
+        active = pay.status === 'RECEIVED' || pay.status === 'CONFIRMED';
+        nextDueDate = pay.dueDate || null;
+
+        const newDbStatus = active ? 'active' : (pay.status === 'OVERDUE' ? 'overdue' : 'cancelled');
+        if (newDbStatus !== user.subscriptionStatus) {
+          await prisma.user.update({
+            where: { id: user.id },
+            data: { subscriptionStatus: newDbStatus }
+          });
+        }
+      }
+    } catch (apiErr: any) {
+      console.warn('[Payments Status] Falha ao consultar Asaas, usando status local do banco:', apiErr.message);
+    }
+
+    return res.json({
+      active,
+      plan: user.subscriptionPlan || 'trial',
+      status: user.subscriptionStatus || (active ? 'active' : 'trial'),
+      nextDueDate,
+      cycle,
+      cancelAtPeriodEnd: user.cancelAtPeriodEnd
+    });
   } catch (error: any) {
     console.error('Erro ao buscar status de assinatura:', error.response?.data || error.message);
-    return res.status(500).json({ error: 'Erro ao obter dados de assinatura do Asaas.' });
+    return res.status(500).json({ error: 'Erro ao obter dados de assinatura.' });
   }
 });
 
@@ -162,7 +227,7 @@ router.post('/cancel_subscription', authenticateToken, async (req: Authenticated
     });
 
     if (!user || !user.subscriptionId || user.subscriptionStatus === 'cancelled') {
-      return res.status(400).json({ error: 'Nenhuma assinatura ativa encontrada.' });
+      return res.status(400).json({ error: 'Nenhuma assinatura ativa encontrada para cancelar.' });
     }
 
     if (user.subscriptionId.startsWith('sub_')) {
@@ -175,13 +240,14 @@ router.post('/cancel_subscription', authenticateToken, async (req: Authenticated
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          cancelAtPeriodEnd: true
+          cancelAtPeriodEnd: true,
+          subscriptionStatus: 'cancelled'
         }
       });
 
       return res.json({
         success: true,
-        message: 'Assinatura cancelada com sucesso na Asaas. Acesso ativo até o fim do período já pago.'
+        message: 'Assinatura cancelada com sucesso. Você não receberá novas cobranças.'
       });
     }
 
@@ -196,7 +262,7 @@ router.post('/cancel_subscription', authenticateToken, async (req: Authenticated
       }
     });
 
-    return res.json({ success: true, message: 'Assinatura encerrada localmente.' });
+    return res.json({ success: true, message: 'Assinatura cancelada localmente.' });
 
   } catch (error: any) {
     console.error('Erro ao cancelar assinatura:', error.response?.data || error.message);
@@ -206,10 +272,11 @@ router.post('/cancel_subscription', authenticateToken, async (req: Authenticated
 
 /**
  * POST /api/payments/webhook
- * Recebe notificações de eventos de pagamento e atualiza status no banco local com verificação rigorosa de token
+ * Recebe notificações de eventos de pagamento da Asaas e atualiza status no banco local com verificação rigorosa de token
  */
 router.post('/webhook', async (req, res) => {
-  const { event, payment } = req.body;
+  const { event } = req.body;
+  const targetObj = req.body.payment || req.body.subscription || {};
   const asaasToken = req.headers['asaas-access-token'];
   const configuredWebhookToken = process.env.ASAAS_WEBHOOK_TOKEN;
 
@@ -229,42 +296,76 @@ router.post('/webhook', async (req, res) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
-    try {
-      if (!payment || !payment.externalReference) {
-        console.warn('⚠️ Webhook Asaas: Recebido evento de pagamento sem externalReference.');
-        return res.json({ received: true });
+  try {
+    let extRef = targetObj.externalReference || '';
+    let match = extRef.match(/^USER_(.+)_PLAN_(.+)$/);
+    let userId = match ? match[1] : null;
+    let planType = match ? match[2] : null;
+
+    // Fallback: If externalReference wasn't found or didn't match, look up user by subscriptionId or payment ID
+    if (!userId) {
+      const subId = targetObj.subscription || targetObj.id;
+      if (subId) {
+        const foundUser = await prisma.user.findFirst({
+          where: { subscriptionId: subId }
+        });
+        if (foundUser) {
+          userId = foundUser.id;
+          if (!planType) planType = foundUser.subscriptionPlan;
+        }
       }
+    }
 
-      const match = payment.externalReference.match(/^USER_(.+)_PLAN_(.+)$/);
-      if (!match) {
-        console.warn(`⚠️ Webhook Asaas: Formato de externalReference inválido: ${payment.externalReference}`);
-        return res.json({ received: true });
-      }
+    console.log(`🔔 Webhook Asaas Recebido: [${event}] ${userId ? `para Usuário ${userId}` : ''}`);
 
-      const userId = match[1];
-      const planType = match[2];
-
-      console.log(`💰 Asaas: Pagamento Confirmado! Usuário: ${userId} | Plano: ${planType}`);
-
-      const user = await prisma.user.findUnique({
+    if (userId) {
+      // Ensure user exists before trying to update to prevent unhandled Prisma errors
+      const userExists = await prisma.user.findUnique({
         where: { id: userId }
       });
 
-      if (user) {
+      if (!userExists) {
+        console.warn(`[Asaas Webhook] Usuário ${userId} não encontrado no banco de dados local.`);
+        return res.json({ received: true });
+      }
+
+      if (event === 'PAYMENT_RECEIVED' || event === 'PAYMENT_CONFIRMED') {
+        const effectivePlan = (planType || userExists.subscriptionPlan || 'essencial').toLowerCase();
+        console.log(`💰 Asaas: Pagamento Confirmado! Usuário: ${userId} | Plano: ${effectivePlan}`);
         await prisma.user.update({
           where: { id: userId },
           data: {
             subscriptionStatus: 'active',
-            subscriptionPlan: planType.toLowerCase(),
-            subscriptionId: payment.subscription || payment.id,
+            subscriptionPlan: effectivePlan,
+            subscriptionId: targetObj.subscription || targetObj.id,
+            cancelAtPeriodEnd: false
+          }
+        });
+      } else if (event === 'PAYMENT_OVERDUE') {
+        console.warn(`⚠️ Asaas: Pagamento atrasado para Usuário: ${userId}`);
+        await prisma.user.update({
+          where: { id: userId },
+          data: { subscriptionStatus: 'overdue' }
+        });
+      } else if (event === 'PAYMENT_REFUNDED' || event === 'PAYMENT_DELETED') {
+        console.warn(`↩️ Asaas: Pagamento estornado/deletado para Usuário: ${userId}`);
+        await prisma.user.update({
+          where: { id: userId },
+          data: { subscriptionStatus: 'cancelled' }
+        });
+      } else if (event === 'SUBSCRIPTION_INACTIVATED' || event === 'SUBSCRIPTION_DELETED') {
+        console.log(`🛑 Asaas: Assinatura inativada/deletada para Usuário: ${userId}`);
+        await prisma.user.update({
+          where: { id: userId },
+          data: {
+            subscriptionStatus: 'cancelled',
             cancelAtPeriodEnd: false
           }
         });
       }
-    } catch (error) {
-      console.error('Erro ao processar Webhook Asaas:', error);
     }
+  } catch (error) {
+    console.error('Erro ao processar Webhook Asaas:', error);
   }
 
   return res.json({ received: true });

@@ -422,7 +422,12 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
       await audio.play();
     } catch (err: any) {
       console.error('Error in playTTS:', err);
-      setError('Falha ao gerar ou reproduzir voz (ElevenLabs): ' + (err.response?.data?.message || err.message));
+      const isUpgrade = err.response?.status === 403 || err.response?.data?.upgradeRequired;
+      if (isUpgrade) {
+        setError('O Modo de Voz é exclusivo dos planos Profundo e Família. Acesse a aba Planos para liberar a voz.');
+      } else {
+        setError('Falha ao gerar ou reproduzir voz: ' + (err.response?.data?.message || err.message));
+      }
       setIsSpeaking(false);
       if (voiceModeActiveRef.current && !sendingRef.current) {
         try {
@@ -436,6 +441,11 @@ export const Chat: React.FC<ChatProps> = ({ token }) => {
 
   // Toggle Voice Mode
   const toggleVoiceMode = () => {
+    if (subscriptionPlan === 'essencial') {
+      setError('O Modo de Voz interativo está disponível a partir do plano Profundo. Acesse Planos no menu lateral para fazer upgrade.');
+      return;
+    }
+
     if (isTranscribing) {
       stopTranscription();
     }
